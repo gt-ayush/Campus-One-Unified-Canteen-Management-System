@@ -7,7 +7,6 @@
 
 import "server-only";
 import { prisma } from "@/lib/db/client";
-import { MenuItem, Canteen, PickupSlot, OrderStatus } from "@/lib/types/domain";
 
 export interface AlternativeRequest {
   studentId: string;
@@ -15,9 +14,9 @@ export interface AlternativeRequest {
   originalMenuItemId: string;
   originalPickupSlotId: string;
   quantity: number;
-  maxDistanceKm?: number;
-  maxPriceDifferencePercent?: number;
-  maxTimeDifferenceMinutes?: number;
+  maxDistanceKm?: number | undefined;
+  maxPriceDifferencePercent?: number | undefined;
+  maxTimeDifferenceMinutes?: number | undefined;
 }
 
 export interface AlternativeSuggestion {
@@ -129,10 +128,12 @@ export async function findAlternatives(
     return { alternatives: [], originalUnavailable: false, originalSlotFull: false };
   }
 
+  const searchTerm = originalItem.name.split(" ")[0] ?? originalItem.name;
+  
   const candidateItems = await prisma.menuItem.findMany({
     where: {
       id: { not: request.originalMenuItemId },
-      name: { contains: originalItem.name.split(" ")[0], mode: "insensitive" },
+      name: { contains: searchTerm, mode: "insensitive" },
       isAvailable: true,
       stockQuantity: { gte: request.quantity },
       canteen: {
@@ -163,8 +164,10 @@ export async function findAlternatives(
   const suggestions: AlternativeSuggestion[] = [];
 
   for (const item of candidateItems) {
-    const priceDiff = item.price - originalItem.price;
-    const priceDiffPercent = ((priceDiff / originalItem.price) * 100);
+    const itemPrice = Number(item.price);
+    const originalPrice = Number(originalItem.price);
+    const priceDiff = itemPrice - originalPrice;
+    const priceDiffPercent = ((priceDiff / originalPrice) * 100);
     if (Math.abs(priceDiffPercent) > maxPriceDiff) continue;
 
     for (const slot of item.canteen.pickupSlots) {
