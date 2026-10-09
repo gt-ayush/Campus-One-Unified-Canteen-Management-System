@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
         description: validation.data.description ?? null,
         price: validation.data.price,
         category: validation.data.category,
+        isAvailable: validation.data.isAvailable,
         stockQuantity: validation.data.stockQuantity,
         maxPerOrder: validation.data.maxPerOrder,
         imageUrl: validation.data.imageUrl ?? null,
