@@ -52,13 +52,31 @@ const PUBLIC_PATHS = new Set([
   "/api/v1/health",
 ]);
 
-const MERCHANT_PATHS = ["/api/v1/merchants", "/api/v1/orders", "/api/v1/menu", "/api/v1/pickup-slots"];
+const MERCHANT_PATHS = ["/api/v1/merchants"];
+const MERCHANT_WRITE_PATHS = ["/api/v1/menu", "/api/v1/pickup-slots"];
 const ADMIN_PATHS = ["/api/v1/admin", "/api/v1/settlements"];
+
+// Public browsing routes: readable without a token (routes themselves use
+// optional auth). All other /api/v1/* paths require a valid JWT.
+const PUBLIC_GET_PREFIXES = ["/api/v1/canteens"];
 
 export async function edgeProxy(request: NextRequest): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
+  const method = request.method;
 
   if (PUBLIC_PATHS.has(pathname)) {
+    return null;
+  }
+
+  if (method === "GET" && PUBLIC_GET_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    const ip = getClientIp(request);
+    const rateLimit = checkRateLimit(`public:${ip}`, RATE_LIMIT_MAX_REQUESTS);
+    if (!rateLimit.allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Rate limit exceeded", code: "RATE_LIMITED" }),
+        { status: 429, headers: { "Content-Type": "application/json" } }
+      );
+    }
     return null;
   }
 
@@ -106,6 +124,9 @@ export async function edgeProxy(request: NextRequest): Promise<NextResponse | nu
 
   const isMerchantRoute = MERCHANT_PATHS.some((p) => pathname.startsWith(p));
   const isAdminRoute = ADMIN_PATHS.some((p) => pathname.startsWith(p));
+  const isMerchantWriteRoute =
+    method !== "GET" &&
+    MERCHANT_WRITE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   if (isAdminRoute && user.role !== UserRole.ADMIN) {
     return new NextResponse(
@@ -115,6 +136,13 @@ export async function edgeProxy(request: NextRequest): Promise<NextResponse | nu
   }
 
   if (isMerchantRoute && user.role === UserRole.STUDENT) {
+    return new NextResponse(
+      JSON.stringify({ error: "Merchant access required", code: "FORBIDDEN" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (isMerchantWriteRoute && user.role === UserRole.STUDENT) {
     return new NextResponse(
       JSON.stringify({ error: "Merchant access required", code: "FORBIDDEN" }),
       { status: 403, headers: { "Content-Type": "application/json" } }
