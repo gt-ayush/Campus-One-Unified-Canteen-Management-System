@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyRefreshToken, createAccessToken, createRefreshToken } from "@/lib/auth/jwt";
 import { prisma } from "@/lib/db/client";
-import { UserRole, UserStatus } from "@/lib/types/domain";
+import { UserStatus, AuthenticatedUser, UserRole } from "@/lib/types/domain";
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,14 +41,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authUser = {
+    const baseAuthUser = {
       id: user.id,
       email: user.email,
-      role: user.role,
-      studentProfileId: user.studentProfile?.id,
-      merchantStaffId: user.merchantStaff?.id,
-      canteenId: user.merchantStaff?.canteenId,
+      role: user.role as UserRole,
+      status: user.status as UserStatus,
     };
+
+    if (user.studentProfile?.id) (baseAuthUser as any).studentProfileId = user.studentProfile.id;
+    if (user.merchantStaff?.id) (baseAuthUser as any).merchantStaffId = user.merchantStaff.id;
+    if (user.merchantStaff?.canteenId) (baseAuthUser as any).canteenId = user.merchantStaff.canteenId;
+
+    const authUser = baseAuthUser as AuthenticatedUser;
 
     const newAccessToken = await createAccessToken(authUser);
     const newRefreshToken = await createRefreshToken(user.id);
