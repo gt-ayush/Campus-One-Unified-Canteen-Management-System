@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { OrderStatus, PaymentStatus, PaymentMethod, UserRole, UserStatus, SettlementStatus } from "@/lib/types/domain";
+import { OrderStatus, PaymentStatus, UserRole, UserStatus, SettlementStatus } from "@/lib/types/domain";
 
 export const uuidSchema = z.string().uuid("Invalid UUID format");
 
@@ -114,7 +114,23 @@ export const createPickupSlotSchema = z.object({
   path: ["endTime"],
 });
 
-export const updatePickupSlotSchema = createPickupSlotSchema.partial().omit({ canteenId: true });
+const pickupSlotBaseSchema = z.object({
+  canteenId: uuidSchema,
+  startTime: z.coerce.date(),
+  endTime: z.coerce.date(),
+  capacityLimit: z.number().int().positive().max(500),
+  preparationBuffer: z.number().int().nonnegative().max(60).default(15),
+});
+
+export const updatePickupSlotSchema = pickupSlotBaseSchema.partial().omit({ canteenId: true }).refine((data) => {
+  if (data.startTime && data.endTime) {
+    return data.endTime > data.startTime;
+  }
+  return true;
+}, {
+  message: "End time must be after start time",
+  path: ["endTime"],
+});
 
 export const createFoodPassSchema = z.object({
   studentId: uuidSchema,
@@ -226,5 +242,5 @@ export const errorResponseSchema = z.object({
   details: z.record(z.unknown()).optional(),
 });
 
-export type ApiResponse<T> = z.infer<ReturnType<typeof apiResponseSchema<z.ZodTypeAny>>>;
+export type ApiResponse = z.infer<ReturnType<typeof apiResponseSchema<z.ZodTypeAny>>>;
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;
