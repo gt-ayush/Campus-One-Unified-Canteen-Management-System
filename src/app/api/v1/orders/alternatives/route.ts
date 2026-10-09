@@ -7,9 +7,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { findAlternatives } from "@/lib/recommendation/alternative-engine";
-import { alternativeRequestSchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { alternativeRequestSchema } from "@/lib/validators/schemas";
 import { getAuthContext } from "@/lib/auth/server-auth";
-import { UserRole } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
