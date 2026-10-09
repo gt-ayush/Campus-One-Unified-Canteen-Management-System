@@ -125,10 +125,9 @@ async function main() {
   for (let i = 0; i < menuItems.length; i++) {
     const item = menuItems[i]!;
     await prisma.menuItem.upsert({
-      where: { id: `seed-${item.name.toLowerCase().replace(/\s+/g, '-')}` },
+      where: { canteenId_name: { canteenId: canteen.id, name: item.name } },
       update: {},
       create: {
-        id: `seed-${item.name.toLowerCase().replace(/\s+/g, '-')}`,
         canteenId: canteen.id,
         ...item,
         maxPerOrder: 5,
@@ -174,29 +173,27 @@ async function main() {
   // Create food pass for student
   const studentProfile = studentUser.studentProfile!;
   await prisma.foodPass.upsert({
-    where: { id: "seed-semester-pass" },
+    where: { studentId_packageName: { studentId: studentProfile.id, packageName: "Semester Meal Plan" } },
     update: {},
     create: {
-      id: "seed-semester-pass",
       studentId: studentProfile.id,
       packageName: "Semester Meal Plan",
-      totalCredits: 20000, // $200 in cents
+      totalCredits: 20000,
       remainingCredits: 15000,
-      dailyLimit: 5000, // $50 per day
+      dailyLimit: 5000,
       validFrom: new Date(now.getFullYear(), 0, 1),
       validUntil: new Date(now.getFullYear(), 5, 31),
       status: "ACTIVE",
-      purchasePrice: 18000, // $180 with discount
+      purchasePrice: 18000,
     },
   });
   console.log("✅ Food pass created");
 
   // Create second canteen for alternatives
   const canteen2 = await prisma.canteen.upsert({
-    where: { id: "seed-east-canteen" },
+    where: { name: "East Campus Kitchen" },
     update: {},
     create: {
-      id: "seed-east-canteen",
       name: "East Campus Kitchen",
       description: "East campus canteen with Asian fusion menu",
       address: "200 East Campus Drive",
@@ -238,10 +235,9 @@ async function main() {
   for (let i = 0; i < eastMenuItems.length; i++) {
     const item = eastMenuItems[i]!;
     await prisma.menuItem.upsert({
-      where: { id: `seed-east-${item.name.toLowerCase().replace(/\s+/g, '-')}` },
+      where: { canteenId_name: { canteenId: canteen2.id, name: item.name } },
       update: {},
       create: {
-        id: `seed-east-${item.name.toLowerCase().replace(/\s+/g, '-')}`,
         canteenId: canteen2.id,
         ...item,
         maxPerOrder: 5,
