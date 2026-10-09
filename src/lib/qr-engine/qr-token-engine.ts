@@ -12,7 +12,6 @@ import { OrderStatus, AuditAction } from "@/lib/types/domain";
 
 const QR_SECRET = process.env.QR_SECRET ?? "qr-secret-change-in-production-min-64-chars";
 const QR_TOKEN_TTL_MINUTES = 30;
-const QR_TOKEN_BYTES = 32;
 const HMAC_ALGORITHM = "sha256";
 
 export interface QRTokenPayload {
@@ -50,8 +49,8 @@ function parseToken(token: string): { payload: QRTokenPayload; hmac: string } | 
     const decoded = Buffer.from(token, "base64url").toString("utf-8");
     const parts = decoded.split(".");
     if (parts.length !== 2) return null;
-    const payload = JSON.parse(parts[0]) as QRTokenPayload;
-    const hmac = parts[1];
+    const payload = JSON.parse(parts[0]!) as QRTokenPayload;
+    const hmac = parts[1]!;
     return { payload, hmac };
   } catch {
     return null;
@@ -143,7 +142,7 @@ export async function verifyQRToken(token: string): Promise<QRVerificationResult
     return {
       valid: false,
       error: `Order is not ready for collection. Current status: ${order.status}`,
-      orderStatus: order.status,
+      orderStatus: order.status as OrderStatus,
     };
   }
 
@@ -155,7 +154,7 @@ export async function verifyQRToken(token: string): Promise<QRVerificationResult
   return {
     valid: true,
     orderId: order.id,
-    orderStatus: order.status,
+    orderStatus: order.status as OrderStatus,
   };
 }
 
