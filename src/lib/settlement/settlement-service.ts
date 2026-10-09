@@ -7,8 +7,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db/client";
-import { SettlementStatus, PaymentStatus, OrderStatus, AuditAction, UserRole } from "@/lib/types/domain";
-import { Decimal } from "@prisma/client/runtime/library";
+import { SettlementStatus, PaymentStatus, OrderStatus, AuditAction, UserRole } from "@prisma/client";
 
 export interface SettlementCalculation {
   grossSales: number;
