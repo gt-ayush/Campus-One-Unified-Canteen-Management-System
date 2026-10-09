@@ -6,9 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createFoodPassSchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { createFoodPassSchema } from "@/lib/validators/schemas";
 import { getAuthContext } from "@/lib/auth/server-auth";
-import { UserRole } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(request: NextRequest) {
@@ -85,6 +85,7 @@ export async function POST(request: NextRequest) {
         ...validation.data,
         remainingCredits: validation.data.totalCredits,
         status: "ACTIVE",
+        paymentId: validation.data.paymentId ?? null,
       },
     });
 
