@@ -7,9 +7,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyQRToken, invalidateQRToken, markQRTokenVerified } from "@/lib/qr-engine/qr-token-engine";
-import { verifyQRSchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { verifyQRSchema } from "@/lib/validators/schemas";
 import { getAuthContext, createOrderContext } from "@/lib/auth/server-auth";
-import { UserRole, OrderStatus, AuditAction } from "@/lib/types/domain";
+import { AuditAction, OrderStatus, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 
 export async function POST(request: NextRequest) {
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     const orderContext = createOrderContext(authContext);
-    const transitionResult = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const updated = await tx.order.update({
         where: { id: orderId },
         data: {
