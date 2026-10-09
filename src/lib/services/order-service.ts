@@ -376,17 +376,21 @@ export async function transitionOrderStatus(
     if (targetStatus === OrderStatus.CANCELLED || targetStatus === OrderStatus.REJECTED) {
       await releaseOrderResources(tx, orderId, context.actorId, context.actorRole);
     }
-
-    if (targetStatus === OrderStatus.READY) {
-      const qrData = await generateQRToken(orderId, order.studentId, order.canteenId);
-      await tx.order.update({
-        where: { id: orderId },
-        data: { qrToken: qrData.token, qrExpiresAt: new Date(qrData.payload.expiresAt) },
-      });
-      return { success: true, qrToken: qrData.token };
-    }
-    return { success: true };
+  }, {
+    // Status transitions bundle several writes (status, audit, resource
+    // release). Give interactive transactions headroom beyond the 5s default
+    // so lunch-rush contention surfaces as lock waits, not expiry errors.
+    maxWait: 5000,
+    timeout: 15000,
   });
+
+  if (targetStatus === OrderStatus.READY) {
+    // QR issuance intentionally happens AFTER the status commit: it performs
+    // its own writes on a separate connection and must not hold the
+    // status-transition transaction open.
+    const qrData = await generateQRToken(orderId, order.studentId, order.canteenId);
+    return { success: true, qrToken: qrData.token };
+  }
 
   return { success: true };
 }
