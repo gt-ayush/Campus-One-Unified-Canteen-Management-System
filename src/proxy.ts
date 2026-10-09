@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken, extractTokenFromHeader, JWTPayload, AuthenticatedUser } from "@/lib/auth/jwt";
+import { verifyToken, extractTokenFromHeader, AuthenticatedUser } from "@/lib/auth/jwt";
 import { UserRole, UserStatus } from "@/lib/types/domain";
 
 interface RateLimitEntry {
@@ -21,7 +21,10 @@ const AUTH_RATE_LIMIT_MAX = 10;
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
+  if (forwarded) {
+    const parts = forwarded.split(",");
+    return parts[0]?.trim() ?? "unknown";
+  }
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
@@ -51,11 +54,9 @@ const PUBLIC_PATHS = new Set([
 
 const MERCHANT_PATHS = ["/api/v1/merchants", "/api/v1/orders", "/api/v1/menu", "/api/v1/pickup-slots"];
 const ADMIN_PATHS = ["/api/v1/admin", "/api/v1/settlements"];
-const STUDENT_PATHS = ["/api/v1/orders", "/api/v1/food-passes", "/api/v1/canteens", "/api/v1/collection"];
 
 export async function edgeProxy(request: NextRequest): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname;
-  const method = request.method;
 
   if (PUBLIC_PATHS.has(pathname)) {
     return null;
@@ -90,19 +91,21 @@ export async function edgeProxy(request: NextRequest): Promise<NextResponse | nu
     );
   }
 
-  const user: AuthenticatedUser = {
+  const baseUser = {
     id: payload.sub,
     email: payload.email,
     role: payload.role as UserRole,
     status: UserStatus.ACTIVE,
-    studentProfileId: payload.studentProfileId,
-    merchantStaffId: payload.merchantStaffId,
-    canteenId: payload.canteenId,
   };
+
+  if (payload.studentProfileId) (baseUser as any).studentProfileId = payload.studentProfileId;
+  if (payload.merchantStaffId) (baseUser as any).merchantStaffId = payload.merchantStaffId;
+  if (payload.canteenId) (baseUser as any).canteenId = payload.canteenId;
+
+  const user = baseUser as AuthenticatedUser;
 
   const isMerchantRoute = MERCHANT_PATHS.some((p) => pathname.startsWith(p));
   const isAdminRoute = ADMIN_PATHS.some((p) => pathname.startsWith(p));
-  const isStudentRoute = STUDENT_PATHS.some((p) => pathname.startsWith(p));
 
   if (isAdminRoute && user.role !== UserRole.ADMIN) {
     return new NextResponse(
