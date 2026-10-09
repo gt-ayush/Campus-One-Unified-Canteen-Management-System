@@ -1,0 +1,397 @@
+/**
+ * SOURCE OF TRUTH KEYWORDS: database, schema, postgresql, prisma, multi-tenant, orders, settlements
+ * WHAT: Complete PostgreSQL database schema for the One Campus One Food Pass system using Prisma ORM
+ * WHY: Defines all core entities with strict constraints, indexes, and relationships for high-concurrency order processing
+ * WHERE: prisma/schema.prisma
+ */
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  MERCHANT_STAFF
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COLLECTED
+  CANCELLED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  FOOD_PASS
+  MANUAL_ADMIN
+  SIMULATED
+}
+
+enum SettlementStatus {
+  PENDING
+  CALCULATED
+  PAID_OUT
+  DISPUTED
+}
+
+enum AuditAction {
+  ORDER_CREATED
+  ORDER_CONFIRMED
+  ORDER_PREPARING
+  ORDER_READY
+  ORDER_COLLECTED
+  ORDER_CANCELLED
+  ORDER_REJECTED
+  STOCK_RESERVED
+  STOCK_RELEASED
+  SLOT_RESERVED
+  SLOT_RELEASED
+  PASS_CREDITS_DEDUCTED
+  PASS_CREDITS_RESTORED
+  PAYMENT_PROCESSED
+  PAYMENT_REFUNDED
+  QR_TOKEN_GENERATED
+  QR_TOKEN_VERIFIED
+  QR_TOKEN_INVALIDATED
+  MERCHANT_PREPARING_MARKED
+  ADMIN_ACTION
+  SETTLEMENT_CALCULATED
+  SETTLEMENT_PAID
+  ALTERNATIVE_SUGGESTED
+  ALTERNATIVE_ACCEPTED
+  ALTERNATIVE_DECLINED
+}
+
+model User {
+  id            String          @id @default(uuid()) @db.Uuid
+  email         String          @unique @db.VarChar(255)
+  passwordHash  String          @db.VarChar(255)
+  role          UserRole        @default(STUDENT)
+  status        UserStatus      @default(PENDING_VERIFICATION)
+  createdAt     DateTime        @default(now()) @db.Timestamptz
+  updatedAt     DateTime        @updatedAt @db.Timestamptz
+  lastLoginAt   DateTime?       @db.Timestamptz
+
+  studentProfile     StudentProfile?
+  merchantStaff      MerchantStaff?
+  auditLogs          AuditLog[]      @relation("UserAuditLogs")
+
+  @@index [email]
+  @@index [role]
+  @@index [status]
+  @@map("users")
+}
+
+model StudentProfile {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @unique @db.Uuid
+  studentId         String      @unique @db.VarChar(50)
+  fullName          String      @db.VarChar(100)
+  phone             String?     @db.VarChar(20)
+  campusId          String      @db.VarChar(50)
+  department        String?     @db.VarChar(100)
+  yearOfStudy       Int?
+  isVerified        Boolean     @default(false)
+  verifiedAt        DateTime?   @db.Timestamptz
+  verifiedBy        String?     @db.Uuid
+  createdAt         DateTime    @default(now()) @db.Timestamptz
+  updatedAt         DateTime    @updatedAt @db.Timestamptz
+
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodPasses        FoodPass[]
+  orders            Order[]
+  auditLogs         AuditLog[]  @relation("StudentAuditLogs")
+
+  @@index [studentId]
+  @@index [campusId]
+  @@map("student_profiles")
+}
+
+model MerchantStaff {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @unique @db.Uuid
+  canteenId     String      @db.Uuid
+  fullName      String      @db.VarChar(100)
+  position      String      @db.VarChar(50)
+  phone         String?     @db.VarChar(20)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now()) @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @db.Timestamptz
+
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canteen       Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  auditLogs     AuditLog[]  @relation("MerchantAuditLogs")
+
+  @@index [canteenId]
+  @@map("merchant_staff")
+}
+
+model Canteen {
+  id              String      @id @default(uuid()) @db.Uuid
+  name            String      @db.VarChar(100)
+  description     String?     @db.Text
+  address         String      @db.VarChar(255)
+  latitude        Decimal     @db.Decimal(10, 8)
+  longitude       Decimal     @db.Decimal(11, 8)
+  phone           String      @db.VarChar(20)
+  email           String      @db.VarChar(100)
+  operatingHours  Json        @db.JsonB
+  isApproved      Boolean     @default(false)
+  approvedAt      DateTime?   @db.Timestamptz
+  approvedBy      String?     @db.Uuid
+  commissionRate  Decimal     @default(0.10) @db.Decimal(5, 4)
+  settlementInfo  Json        @db.JsonB
+  createdAt       DateTime    @default(now()) @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @db.Timestamptz
+
+  menuItems       MenuItem[]
+  pickupSlots     PickupSlot[]
+  orders          Order[]
+  staff           MerchantStaff[]
+  settlements     Settlement[]
+  auditLogs       AuditLog[]  @relation("CanteenAuditLogs")
+
+  @@index [isApproved]
+  @@index [latitude, longitude]
+  @@map("canteens")
+}
+
+model MenuItem {
+  id              String      @id @default(uuid()) @db.Uuid
+  canteenId       String      @db.Uuid
+  name            String      @db.VarChar(100)
+  description     String?     @db.Text
+  price           Decimal     @db.Decimal(10, 2)
+  category        String      @db.VarChar(50)
+  isAvailable     Boolean     @default(true)
+  stockQuantity   Int         @default(0)
+  maxPerOrder     Int         @default(10)
+  imageUrl        String?     @db.VarChar(500)
+  dietaryTags     String[]    @db.Text[]
+  preparationTime Int         @default(10)
+  sortOrder       Int         @default(0)
+  createdAt       DateTime    @default(now()) @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @db.Timestamptz
+
+  canteen         Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
+
+  @@index [canteenId]
+  @@index [canteenId, isAvailable]
+  @@index [category]
+  @@map("menu_items")
+}
+
+model FoodPass {
+  id              String      @id @default(uuid()) @db.Uuid
+  studentId       String      @db.Uuid
+  packageName     String      @db.VarChar(100)
+  totalCredits    Int
+  remainingCredits Int
+  dailyLimit      Int
+  validFrom       DateTime    @db.Timestamptz
+  validUntil      DateTime    @db.Timestamptz
+  status          String      @default("ACTIVE")
+  purchasePrice   Decimal     @db.Decimal(10, 2)
+  paymentId       String?     @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz
+  updatedAt       DateTime    @updatedAt @db.Timestamptz
+
+  student         StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  orders          Order[]
+
+  @@index [studentId]
+  @@index [studentId, status]
+  @@index [validFrom, validUntil]
+  @@map("food_passes")
+}
+
+model PickupSlot {
+  id                  String      @id @default(uuid()) @db.Uuid
+  canteenId           String      @db.Uuid
+  startTime           DateTime    @db.Timestamptz
+  endTime             DateTime    @db.Timestamptz
+  capacityLimit       Int
+  reservedCount       Int         @default(0)
+  isActive            Boolean     @default(true)
+  preparationBuffer   Int         @default(15)
+  createdAt           DateTime    @default(now()) @db.Timestamptz
+  updatedAt           DateTime    @updatedAt @db.Timestamptz
+
+  canteen             Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+  orders              Order[]
+
+  @@unique [canteenId, startTime, endTime]
+  @@index [canteenId, startTime]
+  @@index [canteenId, isActive]
+  @@map("pickup_slots")
+}
+
+model Order {
+  id                  String      @id @default(uuid()) @db.Uuid
+  orderNumber         String      @unique @db.VarChar(20)
+  studentId           String      @db.Uuid
+  canteenId           String      @db.Uuid
+  pickupSlotId        String      @db.Uuid
+  foodPassId          String?     @db.Uuid
+  status              OrderStatus @default(PENDING)
+  subtotal            Decimal     @db.Decimal(10, 2)
+  platformFee         Decimal     @default(0) @db.Decimal(10, 2)
+  totalAmount         Decimal     @db.Decimal(10, 2)
+  paymentStatus       PaymentStatus @default(PENDING)
+  paymentMethod       PaymentMethod @default(FOOD_PASS)
+  paymentId           String?     @db.Uuid
+  cancellationReason  String?     @db.Text
+  cancelledAt         DateTime?   @db.Timestamptz
+  cancelledBy         String?     @db.Uuid
+  confirmedAt         DateTime?   @db.Timestamptz
+  preparingAt         DateTime?   @db.Timestamptz
+  readyAt             DateTime?   @db.Timestamptz
+  collectedAt         DateTime?   @db.Timestamptz
+  qrToken             String?     @unique @db.VarChar(128)
+  qrExpiresAt         DateTime?   @db.Timestamptz
+  alternativeOrderId  String?     @db.Uuid
+  isAlternative       Boolean     @default(false)
+  notes               String?     @db.Text
+  createdAt           DateTime    @default(now()) @db.Timestamptz
+  updatedAt           DateTime    @updatedAt @db.Timestamptz
+
+  student             StudentProfile @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  canteen             Canteen     @relation(fields: [canteenId], references: [id], onDelete: Restrict)
+  pickupSlot          PickupSlot  @relation(fields: [pickupSlotId], references: [id], onDelete: Restrict)
+  foodPass            FoodPass?   @relation(fields: [foodPassId], references: [id], onDelete: SetNull)
+  items               OrderItem[]
+  payment             Payment?
+  auditLogs           AuditLog[]
+
+  @@index [studentId]
+  @@index [canteenId]
+  @@index [canteenId, status]
+  @@index [pickupSlotId]
+  @@index [status]
+  @@index [createdAt]
+  @@index [qrToken]
+  @@index [foodPassId]
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String      @id @default(uuid()) @db.Uuid
+  orderId         String      @db.Uuid
+  menuItemId      String      @db.Uuid
+  quantity        Int
+  unitPrice       Decimal     @db.Decimal(10, 2)
+  totalPrice      Decimal     @db.Decimal(10, 2)
+  itemNameSnapshot String     @db.VarChar(100)
+  createdAt       DateTime    @default(now()) @db.Timestamptz
+
+  order           Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem        MenuItem    @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@index [orderId]
+  @@index [menuItemId]
+  @@map("order_items")
+}
+
+model Payment {
+  id              String          @id @default(uuid()) @db.Uuid
+  orderId         String          @unique @db.Uuid
+  studentId       String          @db.Uuid
+  amount          Decimal         @db.Decimal(10, 2)
+  method          PaymentMethod
+  status          PaymentStatus   @default(PENDING)
+  transactionRef  String?         @db.VarChar(100)
+  processedAt     DateTime?       @db.Timestamptz
+  refundedAt      DateTime?       @db.Timestamptz
+  refundAmount    Decimal         @default(0) @db.Decimal(10, 2)
+  refundReason    String?         @db.Text
+  adminNotes      String?         @db.Text
+  createdAt       DateTime        @default(now()) @db.Timestamptz
+  updatedAt       DateTime        @updatedAt @db.Timestamptz
+
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index [studentId]
+  @@index [status]
+  @@index [transactionRef]
+  @@map("payments")
+}
+
+model Settlement {
+  id                  String            @id @default(uuid()) @db.Uuid
+  canteenId           String            @db.Uuid
+  periodStart         DateTime          @db.Timestamptz
+  periodEnd           DateTime          @db.Timestamptz
+  grossSales          Decimal           @db.Decimal(12, 2)
+  platformFees        Decimal           @db.Decimal(12, 2)
+  refundAdjustments   Decimal           @default(0) @db.Decimal(12, 2)
+  netPayable          Decimal           @db.Decimal(12, 2)
+  status              SettlementStatus  @default(PENDING)
+  calculatedAt        DateTime          @default(now()) @db.Timestamptz
+  paidOutAt           DateTime?         @db.Timestamptz
+  paidOutBy           String?           @db.Uuid
+  payoutReference     String?           @db.VarChar(100)
+  notes               String?           @db.Text
+  createdAt           DateTime          @default(now()) @db.Timestamptz
+  updatedAt           DateTime          @updatedAt @db.Timestamptz
+
+  canteen             Canteen           @relation(fields: [canteenId], references: [id], onDelete: Cascade)
+
+  @@unique [canteenId, periodStart, periodEnd]
+  @@index [canteenId]
+  @@index [status]
+  @@index [periodStart, periodEnd]
+  @@map("settlements")
+}
+
+model AuditLog {
+  id              String      @id @default(uuid()) @db.Uuid
+  actorId         String      @db.Uuid
+  actorRole       UserRole
+  action          AuditAction
+  entityType      String      @db.VarChar(50)
+  entityId        String      @db.Uuid
+  canteenId       String?     @db.Uuid
+  previousState   Json?       @db.JsonB
+  newState        Json?       @db.JsonB
+  metadata        Json?       @db.JsonB
+  ipAddress       String?     @db.VarChar(45)
+  userAgent       String?     @db.Text
+  createdAt       DateTime    @default(now()) @db.Timestamptz
+
+  user            User?       @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  student         StudentProfile? @relation("StudentAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  merchant        MerchantStaff? @relation("MerchantAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  canteen         Canteen?    @relation("CanteenAuditLogs", fields: [canteenId], references: [id], onDelete: SetNull)
+
+  @@index [actorId]
+  @@index [entityType, entityId]
+  @@index [canteenId]
+  @@index [action]
+  @@index [createdAt]
+  @@map("audit_logs")
+}
