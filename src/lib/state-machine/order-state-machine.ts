@@ -6,7 +6,7 @@
  */
 
 import "server-only";
-import { OrderStatus, UserRole, AuditAction } from "@/lib/types/domain";
+import { AuditAction, OrderStatus, UserRole } from "@prisma/client";
 
 export interface StateTransition {
   from: OrderStatus;
@@ -110,12 +110,12 @@ const TRANSITIONS: StateTransition[] = [
   },
 ];
 
-const STUDENT_CANCELLABLE_STATUSES = new Set([
+const STUDENT_CANCELLABLE_STATUSES: Set<OrderStatus> = new Set([
   OrderStatus.PENDING,
   OrderStatus.CONFIRMED,
 ]);
 
-const MERCHANT_ACTIONABLE_STATUSES = new Set([
+const MERCHANT_ACTIONABLE_STATUSES: Set<OrderStatus> = new Set([
   OrderStatus.PENDING,
   OrderStatus.CONFIRMED,
   OrderStatus.PREPARING,
@@ -151,8 +151,8 @@ export class OrderStateMachine {
     const transition = transitions.find((t) => t.allowedRoles.includes(actorRole));
     return {
       allowed: !!transition,
-      transition,
-    };
+      transition: transition ?? undefined,
+    } as { allowed: boolean; transition?: StateTransition };
   }
 
   validateTransition(
@@ -251,11 +251,12 @@ export class OrderStateMachine {
   }
 
   isTerminalStatus(status: OrderStatus): boolean {
-    return [
+    const terminalStatuses: OrderStatus[] = [
       OrderStatus.COLLECTED,
       OrderStatus.CANCELLED,
       OrderStatus.REJECTED,
-    ].includes(status);
+    ];
+    return terminalStatuses.includes(status);
   }
 
   getNextStatusesForRole(status: OrderStatus, role: UserRole): OrderStatus[] {
