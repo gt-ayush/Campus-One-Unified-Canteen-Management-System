@@ -1,48 +1,29 @@
 # One Campus, One Food Pass
 
-## A Smart Pre-Order and Multi-Canteen Management Platform
+A smart pre-order and multi-canteen management platform: students buy food passes, pre-order meals into capacity-limited pickup slots, and collect with single-use QR codes. Canteens manage menus, slots, and orders; admins approve merchants and reconcile settlements.
 
-### Quick Start
+## Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your DATABASE_URL and secrets
-
-# Generate Prisma client
-npm run prisma:generate
-
-# Run database migrations
-npm run prisma:migrate
-
-# Seed development data
-npm run prisma:seed
-
-# Start development server
-npm run dev
+cp .env.example .env          # set DATABASE_URL, JWT_SECRET, QR_SECRET
+npx prisma db push             # sync schema (no migrations dir in repo)
+npx prisma db seed             # load demo users, canteens, menus, slots
+npm run dev                    # http://localhost:3000
 ```
-
-### Production Deployment
 
 ```bash
-# Build for production
-npm run build
-
-# Run production server
-npm start
+npm run build && npm start     # production
+npx prisma studio              # visual DB browser
 ```
 
-### Environment Variables
+### Environment
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `JWT_SECRET` | JWT signing secret (min 32 chars) | Yes |
-| `QR_SECRET` | QR token HMAC secret (min 64 chars) | Yes |
-| `NODE_ENV` | `development` or `production` | Yes |
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | Min 32 chars |
+| `QR_SECRET` | Yes | Min 64 chars, HMAC signing for QR tokens |
 
 ### Test Credentials (after seeding)
 
@@ -52,212 +33,117 @@ npm start
 | Student | student@campusfoodpass.com | password123 |
 | Merchant | merchant@campusfoodpass.com | password123 |
 
----
-
-## Architecture Overview
-
-### System Topology
+## Architecture
 
 ```
-Client PWA → Edge Proxy (src/proxy.ts) → API Routes → Service Layer → PostgreSQL
-                    ↓
-            JWT Verification
-            Rate Limiting
-            RBAC Guards
+Client (Next.js App Router)
+  → src/middleware.ts (thin delegate, no logic)
+    → src/proxy.ts edge guards: JWT verify, rate limit, method-aware RBAC, auth header injection
+      → API routes (src/app/api/v1/) — Zod validation, role/ownership checks
+        → Service layer (import "server-only") — transactions, state machine, QR, settlement
+          → PostgreSQL via Prisma
 ```
 
-### Key Components
+Method-aware RBAC: students may `GET` menus/slots/orders and `POST` orders, but not write menus/slots or touch `/merchants/*`; merchants are scoped to their own canteen; admin-only routes return 403 otherwise. Public browsing (`GET /api/v1/canteens*`) is rate-limited but token-free.
 
-| Layer | Location | Responsibility |
-|-------|----------|----------------|
-| Edge | `src/proxy.ts` | Auth, rate limiting, RBAC |
-| API | `src/app/api/v1/` | REST endpoints with Zod validation |
-| Service | `src/lib/services/` | Business logic, atomic transactions |
-| State Machine | `src/lib/state-machine/` | Order lifecycle enforcement |
-| QR Engine | `src/lib/qr-engine/` | HMAC-SHA256 token security |
-| Recommendation | `src/lib/recommendation/` | Alternative canteen suggestions |
-| Settlement | `src/lib/settlement/` | T+1 merchant payouts |
-| Database | `prisma/schema.prisma` | Complete PostgreSQL schema |
-
----
+| Layer | Location |
+|-------|----------|
+| Edge auth | `src/middleware.ts` → `src/proxy.ts` |
+| API | `src/app/api/v1/` (REST, Zod-validated) |
+| Frontend | `src/app/(student|merchant|admin)/` + `src/components/global/` (React Query) |
+| Order lifecycle | `src/lib/state-machine/` (server-enforced transitions) |
+| QR engine | `src/lib/qr-engine/` (HMAC-SHA256, single-use, replay-proof) |
+| Recommendations | `src/lib/recommendation/` (consent-gated alternatives) |
+| Settlement | `src/lib/settlement/` (`Net = Gross − Fees − Refunds`) |
+| DB | `prisma/schema.prisma` (14 models) |
 
 ## API Endpoints
 
-### Authentication
-- `POST /api/v1/auth/register` - Register student/merchant
-- `POST /api/v1/auth/login` - Login, returns access + refresh tokens
-- `POST /api/v1/auth/refresh` - Rotate access token
+Auth: `POST /auth/register`, `POST /auth/login` (access + HttpOnly refresh), `POST /auth/refresh`.
+Health: `GET /api/v1/health`.
 
-### Orders (Student)
-- `POST /api/v1/orders` - Create order with atomic reservation
-- `GET /api/v1/orders` - List student's orders
-- `POST /api/v1/orders/alternatives` - Get alternative suggestions
+| Method | Path | Who |
+|--------|------|-----|
+| POST | `/orders` (atomic stock/slot/credit reservation) | Student |
+| GET | `/orders`, `/orders/:id` | Student (own), Merchant (own canteen), Admin |
+| PATCH | `/orders/:id/status` (state-machine guarded) | Per transition rules |
+| POST | `/orders/alternatives` | Student |
+| POST | `/collection/verify` (single-use QR, marks collected) | Merchant, Admin |
+| GET/POST | `/menu`, `/pickup-slots` | Authenticated read; merchant/admin writes |
+| GET/PATCH/DELETE | `/menu/:id`, `/pickup-slots/:id` (deactivate-not-delete when referenced) | Merchant (own), Admin |
+| GET | `/canteens`, `/canteens/:id` (menu + slots included) | Public |
+| PATCH | `/canteens/:id` (`{action: approve\|reject, notes?}`) | Admin |
+| GET/POST | `/food-passes`, `GET /food-passes/:id` | Student (own), Admin |
+| GET | `/merchants/:id/settlement` (report, `?action=calculate`, `?action=payout`) | Merchant (own), Admin |
 
-### Orders (Merchant)
-- `PATCH /api/v1/orders/:id/status` - Update order status
-- `GET /api/v1/orders` - List canteen's orders
+## Business Rules (server-enforced)
 
-### Collection
-- `POST /api/v1/collection/verify` - Verify QR, mark collected
-
-### Menu & Slots (Merchant)
-- `GET/POST /api/v1/menu` - Manage menu items
-- `GET/POST /api/v1/pickup-slots` - Manage pickup windows
-
-### Canteens (Public)
-- `GET /api/v1/canteens` - Browse approved canteens
-- `GET /api/v1/canteens/:id` - Canteen detail with menu/slots
-
-### Food Passes
-- `GET/POST /api/v1/food-passes` - Manage prepaid packages
-
-### Settlements (Admin/Merchant)
-- `GET /api/v1/merchants/:id/settlement` - Settlement report
-- `GET /api/v1/merchants/:id/settlement?action=calculate` - Calculate (admin)
-- `GET /api/v1/merchants/:id/settlement?action=payout` - Process payout (admin)
-
-### Health
-- `GET /api/v1/health` - Health check
-
----
-
-## Core Business Rules Enforced
-
-### Order Lifecycle (Server-Enforced)
 ```
 PENDING → CONFIRMED → PREPARING → READY → COLLECTED
     ↓         ↓           ↓
-  CANCELLED REJECTED   REJECTED
+CANCELLED  REJECTED    REJECTED
 ```
 
-- **Students**: Can only cancel in `PENDING` or `CONFIRMED`
-- **Merchants**: Confirm → Prepare → Ready → Collect, or Reject
-- **Admins**: All transitions
-- **Terminal states**: COLLECTED, CANCELLED, REJECTED (no further transitions)
+- Students cancel only in `PENDING`/`CONFIRMED`; cancellation locks at `PREPARING`.
+- Capacity/stock/credits reserved atomically (serializable transaction); overbooking and sub-zero stock impossible.
+- QR tokens are server-issued, 30-min TTL, single-scan; replays rejected.
+- Alternatives never auto-redirect — explicit student confirmation required.
+- Prices snapshotted onto the order; live menu edits never re-price history.
+- Payments are simulated in the prototype; only `COMPLETED`-payment orders settle.
 
-### Atomic Reservations
-Order creation uses Serializable transaction with `SELECT FOR UPDATE`:
-1. Lock pickup slot, check capacity
-2. Lock menu items, check stock
-3. Lock food pass, check credits
-4. Decrement all atomically
-5. Create order + audit logs
+## Frontend Routes
 
-### QR Collection Security
-- HMAC-SHA256 signed tokens with nonce
-- 30-minute TTL, single-use enforcement
-- Replay prevention via database token matching
-- Timing-safe HMAC verification
+| URL | View |
+|-----|------|
+| `/canteens` | Student canteen explorer, menu, cart with credit preview |
+| `/orders` | Student order history + live tracker (QR collect at `READY`) |
+| `/dashboard` | Merchant real-time order kanban |
+| `/verify` | Merchant QR scanner (camera + manual entry) |
+| `/slots` | Merchant pickup-slot capacity manager |
+| `/merchants` | Admin merchant approval queue |
+| `/settlements` | Admin settlement reconciliation + CSV export |
 
-### Alternative Suggestions
-- Ranked by distance, price, time, stock, capacity
-- **Never auto-redirects** - requires explicit student consent
-- Audit trail for suggestions, acceptances, declinations
+## Database Notes
 
-### Settlement Math
-```
-Net Payable = Gross Sales - Platform Fees - Refund Adjustments
-```
-- Daily T+1 batch calculation
-- Platform fees = commissionRate × collected orders
-- Refund adjustments from paid cancelled/rejected orders
-
----
-
-## Database Schema
-
-Key tables with constraints:
-- `users` - Authentication + roles
-- `student_profiles` - Student info, verification
-- `merchant_staff` - Merchant employees, canteen linkage
-- `canteens` - Outlets, approval, commission, settlement info
-- `menu_items` - Items with stock, categories, dietary tags
-- `food_passes` - Prepaid packages with credits, validity
-- `pickup_slots` - Time windows with capacity tracking
-- `orders` - Full lifecycle, QR tokens, payment status
-- `order_items` - Price snapshots at order time
-- `payments` - Payment tracking, refunds
-- `settlements` - Daily merchant payouts
-- `audit_logs` - Complete immutable audit trail
-
----
+- `audit_logs.actorId`/`entityId` are **plain data columns, not foreign keys** — one column cannot reference the User, StudentProfile, MerchantStaff, and Order tables at once, and the previous FKs rejected every legitimate audit write (which rolled back entire order transactions). Only `canteenId` keeps its FK.
+- `qrToken` is `VarChar(512)` — base64url HMAC tokens exceed 128 chars.
+- Unique guards: `menu_items(canteenId, name)`, `food_passes(studentId, packageName)`, `canteens(name)`, `pickup_slots(canteenId, startTime, endTime)`.
 
 ## Development Guidelines
 
-### Code Standards
-- **TypeScript Strict Mode** - No `any`, `unknown`, or type assertions
-- **Zod Validation** - Every input validated at API boundary
-- **Server-Only Services** - `import "server-only"` in all services
-- **Semantic Tokens** - Tailwind CSS v4 design tokens only
-- **Source of Truth Headers** - Every file has keyword metadata
+- Strict TypeScript (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, no unused locals) — `npm run build` must stay green.
+- Zod-validate every API input; server is the sole authority for money, stock, capacity, and state.
+- Services live in `src/lib/` with `import "server-only"`; no DB access from route handlers beyond thin calls.
+- UI uses Tailwind v4 semantic tokens only (`bg-card`, `text-muted-foreground`, …) — no hex colors.
+- Every file starts with a `SOURCE OF TRUTH KEYWORDS` header.
 
-### Adding New Features
-1. Define Zod schema in `src/lib/validators/schemas.ts`
-2. Add service logic in `src/lib/services/` with `import "server-only"`
-3. Create API route in `src/app/api/v1/`
-4. Add state machine transitions if needed
-5. Write unit tests
-6. Update `ARCHITECTURE.md` if architecture changes
+## Known Limitations (verified)
 
-### Testing
-```bash
-npm run test           # Run all tests
-npm run test:watch     # Watch mode
-npm run test:coverage  # Coverage report
-```
-
-### Database
-```bash
-npm run prisma:studio  # Visual database browser
-npm run db:push        # Push schema changes (dev only)
-npm run prisma:migrate # Create migration
-```
-
----
-
-## Security Checklist
-
-- [x] JWT verification at edge proxy
-- [x] Rate limiting per user/IP
-- [x] RBAC on all endpoints
-- [x] Tenant isolation (`assertCanteenAccess`)
-- [x] Serializable transactions for orders
-- [x] HMAC-SHA256 QR tokens
-- [x] Timing-safe equality checks
-- [x] Input validation with Zod
-- [x] Audit logging for all mutations
-- [x] Password hashing with bcryptjs
-- [x] Secure HTTP headers
-- [x] HttpOnly refresh token cookies
-
----
+- `npm test` has no transform configured — the `*.test.ts` files exist but Jest cannot execute TypeScript as-is, and they are excluded from typechecking.
+- Food-pass credits are integers while order totals are decimals — a $3.29 order deducts 3 credits (truncation). Store credits as cents to fix.
+- Merchant rejection is session-local (no persisted rejected state in the schema); rejections don't survive reload.
+- Unit-test typechecking is disabled via tsconfig exclude (`**/*.test.ts`) until `@types/jest` is added.
 
 ## Project Structure
 
 ```
 src/
+├── middleware.ts               # thin edge delegate → proxy.ts
+├── proxy.ts                    # JWT, rate limit, RBAC, auth headers
 ├── app/
-│   └── api/v1/           # REST API routes
-├── lib/
-│   ├── auth/             # JWT, server auth context
-│   ├── db/               # Prisma client
-│   ├── qr-engine/        # QR token generation/verification
-│   ├── recommendation/   # Alternative canteen engine
-│   ├── settlement/       # Merchant settlement calculation
-│   ├── state-machine/    # Order lifecycle state machine
-│   ├── services/         # Business logic (order-service)
-│   ├── types/            # Domain types
-│   └── validators/       # Zod schemas
-├── components/           # React components (future)
-├── proxy.ts              # Edge proxy middleware
-└── types/                # Global types
-
+│   ├── (student)/canteens|orders|pass/
+│   ├── (merchant)/dashboard|verify|slots/
+│   ├── (admin)/merchants|settlements/
+│   └── api/v1/                 # REST routes
+├── components/global/          # status-badge, canteen-card, qr-code-modal, pickup-slot-picker
+└── lib/
+    ├── api/ auth/ db/ hooks/   # typed client, JWT, Prisma singleton, React Query hooks
+    ├── qr-engine/ recommendation/ settlement/ state-machine/
+    ├── services/ types/ validators/
 prisma/
-├── schema.prisma         # Database schema
-└── seed.ts              # Development seed data
+├── schema.prisma
+└── seed.ts
 ```
-
----
 
 ## License
 
