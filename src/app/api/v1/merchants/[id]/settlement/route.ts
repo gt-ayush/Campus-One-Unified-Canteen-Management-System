@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateSettlementReport, createSettlementRecord, formatSettlementForExport } from "@/lib/settlement/settlement-service";
 import { getAuthContext } from "@/lib/auth/server-auth";
-import { UserRole, SettlementStatus } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(
