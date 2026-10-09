@@ -10,16 +10,15 @@ import { prisma } from "@/lib/db/client";
 import { orderStateMachine } from "@/lib/state-machine/order-state-machine";
 import { generateQRToken } from "@/lib/qr-engine/qr-token-engine";
 import { findAlternatives } from "@/lib/recommendation/alternative-engine";
-import { OrderStatus, PaymentStatus, PaymentMethod, AuditAction, UserRole } from "@/lib/types/domain";
-import { Decimal } from "@prisma/client/runtime/library";
+import { AuditAction, OrderStatus, PaymentMethod, PaymentStatus, UserRole } from "@prisma/client";
 
 export interface CreateOrderInput {
   studentId: string;
   canteenId: string;
   pickupSlotId: string;
-  foodPassId?: string;
+  foodPassId?: string | undefined;
   items: { menuItemId: string; quantity: number }[];
-  notes?: string;
+  notes?: string | undefined;
 }
 
 export interface OrderCreationResult {
@@ -47,7 +46,7 @@ async function generateOrderNumber(): Promise<string> {
 
 export async function createOrderAtomically(
   input: CreateOrderInput,
-  context: OrderContext
+  _context: OrderContext
 ): Promise<OrderCreationResult> {
   const { studentId, canteenId, pickupSlotId, foodPassId, items, notes } = input;
 
@@ -184,14 +183,14 @@ export async function createOrderAtomically(
         studentId,
         canteenId,
         pickupSlotId,
-        foodPassId,
+        foodPassId: foodPassId ?? null,
         status: OrderStatus.PENDING,
         subtotal,
         platformFee,
         totalAmount,
         paymentStatus: foodPassId ? PaymentStatus.COMPLETED : PaymentStatus.PENDING,
         paymentMethod: foodPassId ? PaymentMethod.FOOD_PASS : PaymentMethod.SIMULATED,
-        notes,
+        notes: notes ?? null,
         items: { create: orderItemsData },
       },
     });
@@ -278,12 +277,17 @@ export async function confirmOrder(
     include: { canteen: true },
   });
 
-  const validation = orderStateMachine.validateTransition(order.status, OrderStatus.CONFIRMED, context);
+  const transitionContext = {
+    ...context,
+    orderId,
+  };
+
+  const validation = orderStateMachine.validateTransition(order.status, OrderStatus.CONFIRMED, transitionContext);
   if (!validation.success) {
-    return { success: false, error: validation.error };
+    return { success: false, error: validation.error ?? "Validation failed" };
   }
 
-  const updatedOrder = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const updated = await tx.order.update({
       where: { id: orderId },
       data: {
@@ -302,7 +306,7 @@ export async function confirmOrder(
         canteenId: order.canteenId,
         previousState: { status: order.status },
         newState: { status: OrderStatus.CONFIRMED },
-        metadata: validation.auditData!.metadata,
+        metadata: validation.auditData!.metadata as any,
       },
     });
 
@@ -317,7 +321,7 @@ export async function transitionOrderStatus(
   targetStatus: OrderStatus,
   context: OrderContext,
   reason?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; qrToken?: string }> {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
     include: { canteen: true },
@@ -329,9 +333,14 @@ export async function transitionOrderStatus(
     }
   }
 
-  const validation = orderStateMachine.validateTransition(order.status, targetStatus, context);
+  const transitionContext = {
+    ...context,
+    orderId,
+  };
+
+  const validation = orderStateMachine.validateTransition(order.status, targetStatus, transitionContext);
   if (!validation.success) {
-    return { success: false, error: validation.error };
+    return { success: false, error: validation.error ?? "Validation failed" };
   }
 
   const updateData: Record<string, unknown> = { status: targetStatus };
@@ -372,10 +381,11 @@ export async function transitionOrderStatus(
       const qrData = await generateQRToken(orderId, order.studentId, order.canteenId);
       await tx.order.update({
         where: { id: orderId },
-        data: { qrToken: qrData.token, qrExpiresAt: qrData.payload.expiresAt },
+        data: { qrToken: qrData.token, qrExpiresAt: new Date(qrData.payload.expiresAt) },
       });
       return { success: true, qrToken: qrData.token };
     }
+    return { success: true };
   });
 
   return { success: true };
@@ -494,12 +504,16 @@ export async function getCanteenOrders(
   dateFrom?: Date,
   dateTo?: Date
 ) {
+  const where: any = { canteenId };
+  if (status) where.status = status;
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = dateFrom;
+    if (dateTo) where.createdAt.lte = dateTo;
+  }
+
   return prisma.order.findMany({
-    where: {
-      canteenId,
-      ...(status ? { status } : {}),
-      ...(dateFrom || dateTo ? { createdAt: { gte: dateFrom, lte: dateTo } } : {}),
-    },
+    where,
     include: {
       items: { include: { menuItem: true } },
       pickupSlot: true,
