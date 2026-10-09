@@ -14,23 +14,26 @@ export function getAuthContext(): AuthenticatedUser {
   const userId = headersList.get("x-user-id");
   const userRole = headersList.get("x-user-role") as UserRole;
   const userEmail = headersList.get("x-user-email");
-  const studentProfileId = headersList.get("x-student-profile-id") || undefined;
-  const merchantStaffId = headersList.get("x-merchant-staff-id") || undefined;
-  const canteenId = headersList.get("x-canteen-id") || undefined;
+  const studentProfileId = headersList.get("x-student-profile-id");
+  const merchantStaffId = headersList.get("x-merchant-staff-id");
+  const canteenId = headersList.get("x-canteen-id");
 
   if (!userId || !userRole || !userEmail) {
     throw new Error("Authentication context not found. Ensure proxy.ts is configured.");
   }
 
-  return {
+  const base = {
     id: userId,
     email: userEmail,
     role: userRole,
     status: UserStatus.ACTIVE,
-    studentProfileId,
-    merchantStaffId,
-    canteenId,
   };
+
+  if (studentProfileId) (base as any).studentProfileId = studentProfileId;
+  if (merchantStaffId) (base as any).merchantStaffId = merchantStaffId;
+  if (canteenId) (base as any).canteenId = canteenId;
+
+  return base as AuthenticatedUser;
 }
 
 export function getOptionalAuthContext(): AuthenticatedUser | null {
@@ -50,9 +53,12 @@ export function assertAuthContext(): AuthenticatedUser {
 }
 
 export function createOrderContext(context: AuthenticatedUser) {
-  return {
+  const base = {
     actorId: context.studentProfileId || context.merchantStaffId || context.id,
     actorRole: context.role,
-    canteenId: context.canteenId,
   };
+  if (context.canteenId) {
+    return { ...base, canteenId: context.canteenId };
+  }
+  return base;
 }
