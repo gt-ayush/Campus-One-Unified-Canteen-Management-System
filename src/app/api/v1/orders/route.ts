@@ -7,9 +7,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createOrderAtomically } from "@/lib/services/order-service";
-import { createOrderSchema, apiResponseSchema, errorResponseSchema } from "@/lib/validators/schemas";
+import { createOrderSchema } from "@/lib/validators/schemas";
 import { getAuthContext, createOrderContext } from "@/lib/auth/server-auth";
-import { UserRole } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
     }
 
     const orderContext = createOrderContext(authContext);
-    const result = await createOrderAtomically(validation.data, orderContext);
+    const orderInput = {
+      ...validation.data,
+      studentId: authContext.studentProfileId!,
+    };
+    const result = await createOrderAtomically(orderInput, orderContext);
 
     if (!result.success) {
       const errorCode = (result as any).errorCode || "ORDER_CREATION_FAILED";
