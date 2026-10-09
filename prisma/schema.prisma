@@ -1,9 +1,7 @@
-/**
- * SOURCE OF TRUTH KEYWORDS: database, schema, postgresql, prisma, multi-tenant, orders, settlements
- * WHAT: Complete PostgreSQL database schema for the One Campus One Food Pass system using Prisma ORM
- * WHY: Defines all core entities with strict constraints, indexes, and relationships for high-concurrency order processing
- * WHERE: prisma/schema.prisma
- */
+// SOURCE OF TRUTH KEYWORDS: database, schema, postgresql, prisma, multi-tenant, orders, settlements
+// WHAT: Complete PostgreSQL database schema for the One Campus One Food Pass system using Prisma ORM
+// WHY: Defines all core entities with strict constraints, indexes, and relationships for high-concurrency order processing
+// WHERE: prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -100,9 +98,9 @@ model User {
   merchantStaff      MerchantStaff?
   auditLogs          AuditLog[]      @relation("UserAuditLogs")
 
-  @@index [email]
-  @@index [role]
-  @@index [status]
+  @@index([email])
+  @@index([role])
+  @@index([status])
   @@map("users")
 }
 
@@ -126,8 +124,8 @@ model StudentProfile {
   orders            Order[]
   auditLogs         AuditLog[]  @relation("StudentAuditLogs")
 
-  @@index [studentId]
-  @@index [campusId]
+  @@index([studentId])
+  @@index([campusId])
   @@map("student_profiles")
 }
 
@@ -146,7 +144,7 @@ model MerchantStaff {
   canteen       Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
   auditLogs     AuditLog[]  @relation("MerchantAuditLogs")
 
-  @@index [canteenId]
+  @@index([canteenId])
   @@map("merchant_staff")
 }
 
@@ -175,8 +173,8 @@ model Canteen {
   settlements     Settlement[]
   auditLogs       AuditLog[]  @relation("CanteenAuditLogs")
 
-  @@index [isApproved]
-  @@index [latitude, longitude]
+  @@index([isApproved])
+  @@index([latitude, longitude])
   @@map("canteens")
 }
 
@@ -191,7 +189,7 @@ model MenuItem {
   stockQuantity   Int         @default(0)
   maxPerOrder     Int         @default(10)
   imageUrl        String?     @db.VarChar(500)
-  dietaryTags     String[]    @db.Text[]
+  dietaryTags     Json        @db.JsonB
   preparationTime Int         @default(10)
   sortOrder       Int         @default(0)
   createdAt       DateTime    @default(now()) @db.Timestamptz
@@ -200,9 +198,9 @@ model MenuItem {
   canteen         Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
   orderItems      OrderItem[]
 
-  @@index [canteenId]
-  @@index [canteenId, isAvailable]
-  @@index [category]
+  @@index([canteenId])
+  @@index([canteenId, isAvailable])
+  @@index([category])
   @@map("menu_items")
 }
 
@@ -224,9 +222,9 @@ model FoodPass {
   student         StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   orders          Order[]
 
-  @@index [studentId]
-  @@index [studentId, status]
-  @@index [validFrom, validUntil]
+  @@index([studentId])
+  @@index([studentId, status])
+  @@index([validFrom, validUntil])
   @@map("food_passes")
 }
 
@@ -245,9 +243,9 @@ model PickupSlot {
   canteen             Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
   orders              Order[]
 
-  @@unique [canteenId, startTime, endTime]
-  @@index [canteenId, startTime]
-  @@index [canteenId, isActive]
+  @@unique([canteenId, startTime, endTime])
+  @@index([canteenId, startTime])
+  @@index([canteenId, isActive])
   @@map("pickup_slots")
 }
 
@@ -286,16 +284,16 @@ model Order {
   foodPass            FoodPass?   @relation(fields: [foodPassId], references: [id], onDelete: SetNull)
   items               OrderItem[]
   payment             Payment?
-  auditLogs           AuditLog[]
+  auditLogs           AuditLog[]        @relation("OrderAuditLogs")
 
-  @@index [studentId]
-  @@index [canteenId]
-  @@index [canteenId, status]
-  @@index [pickupSlotId]
-  @@index [status]
-  @@index [createdAt]
-  @@index [qrToken]
-  @@index [foodPassId]
+  @@index([studentId])
+  @@index([canteenId])
+  @@index([canteenId, status])
+  @@index([pickupSlotId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([qrToken])
+  @@index([foodPassId])
   @@map("orders")
 }
 
@@ -312,8 +310,8 @@ model OrderItem {
   order           Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem        MenuItem    @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
 
-  @@index [orderId]
-  @@index [menuItemId]
+  @@index([orderId])
+  @@index([menuItemId])
   @@map("order_items")
 }
 
@@ -335,9 +333,9 @@ model Payment {
 
   order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  @@index [studentId]
-  @@index [status]
-  @@index [transactionRef]
+  @@index([studentId])
+  @@index([status])
+  @@index([transactionRef])
   @@map("payments")
 }
 
@@ -361,10 +359,10 @@ model Settlement {
 
   canteen             Canteen           @relation(fields: [canteenId], references: [id], onDelete: Cascade)
 
-  @@unique [canteenId, periodStart, periodEnd]
-  @@index [canteenId]
-  @@index [status]
-  @@index [periodStart, periodEnd]
+  @@unique([canteenId, periodStart, periodEnd])
+  @@index([canteenId])
+  @@index([status])
+  @@index([periodStart, periodEnd])
   @@map("settlements")
 }
 
@@ -383,15 +381,16 @@ model AuditLog {
   userAgent       String?     @db.Text
   createdAt       DateTime    @default(now()) @db.Timestamptz
 
-  user            User?       @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
-  student         StudentProfile? @relation("StudentAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
-  merchant        MerchantStaff? @relation("MerchantAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
-  canteen         Canteen?    @relation("CanteenAuditLogs", fields: [canteenId], references: [id], onDelete: SetNull)
+  user            User?       @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull, map: "audit_logs_user_fkey")
+  student         StudentProfile? @relation("StudentAuditLogs", fields: [actorId], references: [id], onDelete: SetNull, map: "audit_logs_student_fkey")
+  merchant        MerchantStaff? @relation("MerchantAuditLogs", fields: [actorId], references: [id], onDelete: SetNull, map: "audit_logs_merchant_fkey")
+  canteen         Canteen?    @relation("CanteenAuditLogs", fields: [canteenId], references: [id], onDelete: SetNull, map: "audit_logs_canteen_fkey")
+  order           Order?      @relation("OrderAuditLogs", fields: [entityId], references: [id], onDelete: SetNull, map: "audit_logs_order_fkey")
 
-  @@index [actorId]
-  @@index [entityType, entityId]
-  @@index [canteenId]
-  @@index [action]
-  @@index [createdAt]
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([canteenId])
+  @@index([action])
+  @@index([createdAt])
   @@map("audit_logs")
 }
