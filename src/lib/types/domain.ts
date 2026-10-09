@@ -234,6 +234,75 @@ export interface Order {
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;
+  student?: {
+    id: string;
+    fullName: string;
+    studentId: string;
+    user?: { id: string; email: string } | null;
+  } | null;
+  canteen?: {
+    id: string;
+    name: string;
+    address: string;
+  } | null;
+  pickupSlot?: {
+    id: string;
+    startTime: Date | string;
+    endTime: Date | string;
+    capacityLimit: number;
+    reservedCount: number;
+  } | null;
+  items?: Array<OrderItem & { menuItem?: MenuItem | null }> | null;
+  payment?: Payment | null;
+}
+
+export interface CartItem {
+  menuItem: MenuItem;
+  quantity: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface OrderListResponse {
+  data: Order[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface MenuListResponse {
+  data: MenuItem[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface CanteenListResponse {
+  data: Canteen[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface FoodPassListResponse {
+  data: FoodPass[];
 }
 
 export interface OrderItem {
