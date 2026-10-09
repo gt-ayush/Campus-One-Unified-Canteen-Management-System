@@ -6,9 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createMenuItemSchema, menuQuerySchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { createMenuItemSchema, menuQuerySchema } from "@/lib/validators/schemas";
 import { getAuthContext } from "@/lib/auth/server-auth";
-import { UserRole } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(request: NextRequest) {
@@ -107,9 +107,17 @@ export async function POST(request: NextRequest) {
 
     const item = await prisma.menuItem.create({
       data: {
-        ...validation.data,
-        canteenId,
+        name: validation.data.name,
+        description: validation.data.description ?? null,
         price: validation.data.price,
+        category: validation.data.category,
+        stockQuantity: validation.data.stockQuantity,
+        maxPerOrder: validation.data.maxPerOrder,
+        imageUrl: validation.data.imageUrl ?? null,
+        dietaryTags: validation.data.dietaryTags,
+        preparationTime: validation.data.preparationTime,
+        sortOrder: validation.data.sortOrder,
+        canteenId: canteenId as string,
       },
     });
 
