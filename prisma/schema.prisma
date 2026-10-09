@@ -96,7 +96,6 @@ model User {
 
   studentProfile     StudentProfile?
   merchantStaff      MerchantStaff?
-  auditLogs          AuditLog[]      @relation("UserAuditLogs")
 
   @@index([email])
   @@index([role])
@@ -122,7 +121,6 @@ model StudentProfile {
   user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   foodPasses        FoodPass[]
   orders            Order[]
-  auditLogs         AuditLog[]  @relation("StudentAuditLogs")
 
   @@index([studentId])
   @@index([campusId])
@@ -142,7 +140,6 @@ model MerchantStaff {
 
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   canteen       Canteen     @relation(fields: [canteenId], references: [id], onDelete: Cascade)
-  auditLogs     AuditLog[]  @relation("MerchantAuditLogs")
 
   @@index([canteenId])
   @@map("merchant_staff")
@@ -175,6 +172,7 @@ model Canteen {
 
   @@index([isApproved])
   @@index([latitude, longitude])
+  @@unique([name])
   @@map("canteens")
 }
 
@@ -201,6 +199,7 @@ model MenuItem {
   @@index([canteenId])
   @@index([canteenId, isAvailable])
   @@index([category])
+  @@unique([canteenId, name])
   @@map("menu_items")
 }
 
@@ -225,6 +224,7 @@ model FoodPass {
   @@index([studentId])
   @@index([studentId, status])
   @@index([validFrom, validUntil])
+  @@unique([studentId, packageName])
   @@map("food_passes")
 }
 
@@ -270,7 +270,7 @@ model Order {
   preparingAt         DateTime?   @db.Timestamptz
   readyAt             DateTime?   @db.Timestamptz
   collectedAt         DateTime?   @db.Timestamptz
-  qrToken             String?     @unique @db.VarChar(128)
+  qrToken             String?     @unique @db.VarChar(512)
   qrExpiresAt         DateTime?   @db.Timestamptz
   alternativeOrderId  String?     @db.Uuid
   isAlternative       Boolean     @default(false)
@@ -284,7 +284,6 @@ model Order {
   foodPass            FoodPass?   @relation(fields: [foodPassId], references: [id], onDelete: SetNull)
   items               OrderItem[]
   payment             Payment?
-  auditLogs           AuditLog[]        @relation("OrderAuditLogs")
 
   @@index([studentId])
   @@index([canteenId])
@@ -368,10 +367,17 @@ model Settlement {
 
 model AuditLog {
   id              String      @id @default(uuid()) @db.Uuid
-  actorId         String      @db.Uuid
+  // Plain actor identifier (user id, profile id, staff id, or "system").
+  // Intentionally NOT a foreign key: a single column cannot reference the
+  // User, StudentProfile, and MerchantStaff tables at the same time, and
+  // enforcing any one of them rejects every legitimate audit write.
+  actorId         String      @db.VarChar(50)
   actorRole       UserRole
   action          AuditAction
   entityType      String      @db.VarChar(50)
+  // Plain entity identifier (order, menu item, slot, pass, ...).
+  // Intentionally NOT a foreign key to Order.id for the same reason: audit
+  // rows routinely reference non-order entities.
   entityId        String      @db.Uuid
   canteenId       String?     @db.Uuid
   previousState   Json?       @db.JsonB
@@ -381,11 +387,7 @@ model AuditLog {
   userAgent       String?     @db.Text
   createdAt       DateTime    @default(now()) @db.Timestamptz
 
-  user            User?       @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull, map: "audit_logs_user_fkey")
-  student         StudentProfile? @relation("StudentAuditLogs", fields: [actorId], references: [id], onDelete: SetNull, map: "audit_logs_student_fkey")
-  merchant        MerchantStaff? @relation("MerchantAuditLogs", fields: [actorId], references: [id], onDelete: SetNull, map: "audit_logs_merchant_fkey")
   canteen         Canteen?    @relation("CanteenAuditLogs", fields: [canteenId], references: [id], onDelete: SetNull, map: "audit_logs_canteen_fkey")
-  order           Order?      @relation("OrderAuditLogs", fields: [entityId], references: [id], onDelete: SetNull, map: "audit_logs_order_fkey")
 
   @@index([actorId])
   @@index([entityType, entityId])
