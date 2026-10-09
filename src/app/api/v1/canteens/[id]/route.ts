@@ -7,11 +7,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getOptionalAuthContext } from "@/lib/auth/server-auth";
-import { UserRole } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -46,15 +46,15 @@ export async function GET(
       );
     }
 
-    const slotsWithAvailability = canteen.pickupSlots.map((slot) => ({
+    const slotsWithAvailability = canteen.pickupSlots.map((slot: typeof canteen.pickupSlots[0]) => ({
       ...slot,
       availableCapacity: slot.capacityLimit - slot.reservedCount,
       isFull: slot.reservedCount >= slot.capacityLimit,
     }));
 
-    const menuByCategory = canteen.menuItems.reduce((acc, item) => {
+    const menuByCategory = canteen.menuItems.reduce((acc: Record<string, any[]>, item: typeof canteen.menuItems[0]) => {
       if (!acc[item.category]) acc[item.category] = [];
-      acc[item.category].push({
+      (acc[item.category]!).push({
         id: item.id,
         name: item.name,
         description: item.description,
