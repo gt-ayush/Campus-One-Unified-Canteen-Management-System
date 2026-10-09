@@ -6,10 +6,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { loginSchema, apiResponseSchema } from "@/lib/validators/schemas";
-import { createAccessToken, createRefreshToken, verifyToken } from "@/lib/auth/jwt";
+import { loginSchema } from "@/lib/validators/schemas";
+import { createAccessToken, createRefreshToken } from "@/lib/auth/jwt";
 import { prisma } from "@/lib/db/client";
-import { UserRole, UserStatus } from "@/lib/types/domain";
+import { UserStatus, AuthenticatedUser, UserRole } from "@/lib/types/domain";
 import { compare } from "bcryptjs";
 
 export async function POST(request: NextRequest) {
@@ -61,14 +61,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authUser = {
+    const baseAuthUser = {
       id: user.id,
       email: user.email,
-      role: user.role,
-      studentProfileId: user.studentProfile?.id,
-      merchantStaffId: user.merchantStaff?.id,
-      canteenId: user.merchantStaff?.canteenId,
+      role: user.role as UserRole,
+      status: user.status as UserStatus,
     };
+
+    if (user.studentProfile?.id) (baseAuthUser as any).studentProfileId = user.studentProfile.id;
+    if (user.merchantStaff?.id) (baseAuthUser as any).merchantStaffId = user.merchantStaff.id;
+    if (user.merchantStaff?.canteenId) (baseAuthUser as any).canteenId = user.merchantStaff.canteenId;
+
+    const authUser = baseAuthUser as AuthenticatedUser;
 
     const accessToken = await createAccessToken(authUser);
     const refreshToken = await createRefreshToken(user.id);
