@@ -6,9 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createPickupSlotSchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { createPickupSlotSchema } from "@/lib/validators/schemas";
 import { getAuthContext } from "@/lib/auth/server-auth";
-import { UserRole } from "@/lib/types/domain";
+import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(request: NextRequest) {
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const slotsWithAvailability = slots.map((slot) => ({
+    const slotsWithAvailability = slots.map((slot: typeof slots[0]) => ({
       ...slot,
       availableCapacity: slot.capacityLimit - slot.reservedCount,
       isFull: slot.reservedCount >= slot.capacityLimit,
