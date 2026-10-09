@@ -1,25 +1,5 @@
 # AGENTS.md
 
-## Repo state
-- Pre-implementation repo: it contains only `README.md` and a stock Node.js `.gitignore`. There is no source code, manifest, build, test, or CI tooling yet — don't search for run commands; none exist.
-- `README.md` is the authoritative functional spec (features, order lifecycle, data entities, §20 acceptance criteria). Read it before planning or building anything.
-- Tech stack: The TypeScript / TailwindCSS / Node-Express / PostgreSQL
-
-## Hard rules from the spec
-Easy to miss while skimming the ~230-line README, but each maps to an acceptance criterion:
-
-- The server is the only authority for money, stock, capacity, and state: validate prices, credits, stock, pickup-slot capacity, and every order status transition server-side. Clients must never decide if an order can be cancelled or collected (§6, §16).
-- Reserve pickup-slot capacity atomically (DB transactions) so orders can't overbook; reject orders when stock or capacity is insufficient (§8, §20).
-- QR collection tokens are server-generated and single-use — a token must never be collected twice (§14, §20).
-- Never silently redirect an order to another canteen; always get the student's explicit confirmation first (§5).
-- Snapshot item prices onto the order at order time (`OrderItem`); never re-price from the live menu later (§15).
-- Payments stay simulated / manually admin-approved for the prototype — don't integrate a real gateway or automatic settlements unprompted (§10, §21).
-- Prepaid pass funds are not platform revenue; track settlements, refunds, and unused credits separately (§10).
-
-Based on the rules and guardrails established in the project's codebase, here is a clean, rewritten version of the `CLAUDE.md` architecture and developer guideline file, optimized for AI agents and maintainers:
-
----
-
 # Every rule here must be followed.
 
 ## 1. Build from existing patterns, not new ones
