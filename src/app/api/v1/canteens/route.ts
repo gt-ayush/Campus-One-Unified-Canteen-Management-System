@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { paginationSchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { paginationSchema } from "@/lib/validators/schemas";
 import { getOptionalAuthContext } from "@/lib/auth/server-auth";
 import { prisma } from "@/lib/db/client";
 
@@ -31,7 +31,7 @@ function haversineDistance(
 
 export async function GET(request: NextRequest) {
   try {
-    const authContext = getOptionalAuthContext();
+    getOptionalAuthContext(); // Validate auth if present, but not required for public canteen browsing
     const { searchParams } = new URL(request.url);
 
     const validation = paginationSchema.safeParse(Object.fromEntries(searchParams));
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
       take: limit,
     });
 
-    let canteensWithDistance = canteens.map((canteen) => {
+    let canteensWithDistance = canteens.map((canteen: typeof canteens[0]) => {
       let distance: number | null = null;
       if (lat && lng) {
         distance = haversineDistance(
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       }
 
       const nextSlot = canteen.pickupSlots.find(
-        (slot) => slot.startTime > new Date()
+        (slot: typeof canteen.pickupSlots[0]) => slot.startTime > new Date()
       );
 
       return {
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     }).filter(Boolean);
 
     if (lat && lng) {
-      canteensWithDistance.sort((a, b) => (a!.distanceKm ?? Infinity) - (b!.distanceKm ?? Infinity));
+      canteensWithDistance.sort((a: typeof canteensWithDistance[0], b: typeof canteensWithDistance[0]) => (a!.distanceKm ?? Infinity) - (b!.distanceKm ?? Infinity));
     }
 
     const total = await prisma.canteen.count({ where: { isApproved: true } });
