@@ -143,7 +143,7 @@ Demand forecasts are estimates, not guaranteed customer counts. Start with simpl
 ### 14. Suggested Technical Architecture
 A web application or mobile-friendly progressive web app can be used for the initial release.
 
-- **Frontend:** React or another suitable component-based web framework.
+- **Frontend:** TypeScript or another suitable component-based web framework.
 - **Backend:** Node.js with Express, or another API framework.
 - **Database:** PostgreSQL for structured records and transactions.
 - **Authentication:** Secure sessions or token-based authentication with role-based access control.
