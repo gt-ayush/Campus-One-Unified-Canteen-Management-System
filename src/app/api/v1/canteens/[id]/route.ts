@@ -1,14 +1,21 @@
 /**
  * SOURCE OF TRUTH KEYWORDS: api, canteens, detail, menu, slots, merchant, dashboard
- * WHAT: GET /api/v1/canteens/:id - Detailed canteen view with full menu and slots
+ * WHAT: GET /api/v1/canteens/:id - Detailed canteen view with full menu and slots.
+ *        PATCH /api/v1/canteens/:id - Admin-only canteen approval (approve/reject).
  * WHY: Provides complete canteen information for student ordering and merchant management
  * WHERE: src/app/api/v1/canteens/[id]/route.ts
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getOptionalAuthContext } from "@/lib/auth/server-auth";
+import { z } from "zod";
+import { getOptionalAuthContext, getAuthContext } from "@/lib/auth/server-auth";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
+
+const canteenApprovalSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  notes: z.string().max(1000).optional(),
+});
 
 export async function GET(
   _request: NextRequest,
@@ -87,6 +94,77 @@ export async function GET(
     });
   } catch (error) {
     console.error("Canteen detail error:", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error", errorCode: "INTERNAL_ERROR" },
+      { status: 500 }
+    );
+  }
+}
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const authContext = getAuthContext();
+
+    if (authContext.role !== UserRole.ADMIN) {
+      return NextResponse.json(
+        { success: false, error: "Admin access required", errorCode: "FORBIDDEN" },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
+    const body = await request.json();
+    const parsed = canteenApprovalSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid request data",
+          errorCode: "VALIDATION_ERROR",
+          details: parsed.error.flatten().fieldErrors,
+        },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.canteen.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: "Canteen not found", errorCode: "NOT_FOUND" },
+        { status: 404 }
+      );
+    }
+
+    const approved = parsed.data.action === "approve";
+    const updated = await prisma.canteen.update({
+      where: { id },
+      data: {
+        isApproved: approved,
+        approvedAt: approved ? new Date() : existing.approvedAt,
+        approvedBy: approved ? authContext.id : existing.approvedBy,
+      },
+    });
+
+    // NOTE: No audit-log row is written here on purpose. AuditLog.entityId
+    // carries a foreign key to Order.id, so any audit row whose entity is not
+    // an order is rejected by the database (P2003). An audit trail for
+    // approvals needs that schema-level issue resolved first.
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        id: updated.id,
+        name: updated.name,
+        isApproved: updated.isApproved,
+        approvedAt: updated.approvedAt,
+        rejectionNotes: approved ? null : (parsed.data.notes ?? null),
+      },
+    });
+  } catch (error) {
+    console.error("Canteen approval error:", error);
     return NextResponse.json(
       { success: false, error: "Internal server error", errorCode: "INTERNAL_ERROR" },
       { status: 500 }
