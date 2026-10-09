@@ -2,233 +2,263 @@
 
 ## A Smart Pre-Order and Multi-Canteen Management Platform
 
-### 1. Project Overview
-One Campus, One Food Pass is a student-centered digital platform that connects students with multiple registered campus canteens. It allows students to purchase eligible food packages, pre-order meals, select pickup time slots, and collect food using a QR code or student ID. The platform helps canteens manage orders, stock, preparation capacity, and settlements while reducing queues and potentially minimizing food waste.
+### Quick Start
 
-### 2. Problem Statement
-Students often spend a significant part of their limited lunch break travelling to canteens and waiting in queues. Food items may be unavailable, counters may be overcrowded, and students may need separate payment methods at different outlets. Canteen operators may struggle to predict demand, manage stock, and handle peak-time orders. A unified pre-ordering and food-pass platform can address these problems.
+```bash
+# Install dependencies
+npm install
 
-### 3. Project Objectives
-- Reduce waiting time and make food collection more predictable.
-- Provide one digital food pass across participating canteens.
-- Enable advance ordering and scheduled pickup.
-- Prevent orders from exceeding stock or preparation capacity.
-- Provide fair cancellation rules and accountability.
-- Help canteens track sales and receive transparent settlements.
-- Support demand planning and food-waste reduction.
+# Set up environment
+cp .env.example .env
+# Edit .env with your DATABASE_URL and secrets
 
-### 4. User Roles
-**Students:** Register, browse menus, buy food passes, pre-order, choose pickup slots, view order status, collect food by QR code, and submit feedback.
+# Generate Prisma client
+npm run prisma:generate
 
-**Canteen operators:** Register and manage their outlet, update menus and stock, configure pickup capacity, accept orders, update preparation status, verify collection, and view sales and settlement reports.
+# Run database migrations
+npm run prisma:migrate
 
-**Platform administrators:** Verify accounts and canteens, manage packages, review complaints, monitor transactions, configure platform fees, and investigate unusual activity.
+# Seed development data
+npm run prisma:seed
 
-### 5. Core Features
-#### Student food pass
-- Semester or annual prepaid packages.
-- Defined meal credits, eligible items, validity, and daily limits.
-- One pass usable at multiple registered canteens.
-- Remaining credits, transaction history, and digital receipts.
-- Clearly defined refund and expiry rules.
+# Start development server
+npm run dev
+```
 
-#### Menu and pre-ordering
-- Browse canteens, menus, prices, and item availability.
-- Select meals, quantities, and pickup time slots.
-- Receive an order confirmation and unique order ID.
-- View order progress and pickup instructions.
+### Production Deployment
 
-#### Scheduled pickup
-- Canteens configure pickup windows, such as 12:30–12:45 PM.
-- Each time slot has an order limit based on staff and preparation capacity.
-- The system prevents overbooking and stops accepting orders for full slots.
-- Students receive a notification when the order is ready.
+```bash
+# Build for production
+npm run build
 
-#### Stock management
-- Canteens maintain item availability and quantity.
-- Accepted orders reserve the relevant stock.
-- Stock is released if an order is cancelled under the allowed policy.
-- The system prevents sales beyond available stock.
+# Run production server
+npm start
+```
 
-#### Alternative canteen suggestions
-- If an item is unavailable or a slot is full, show suitable alternatives.
-- Consider availability, price, distance, and pickup time where data is available.
-- Obtain student confirmation before changing the canteen or order.
-- Never silently redirect an order to a different outlet.
+### Environment Variables
 
-#### QR-based collection
-- Generate a unique, hard-to-guess token for each order.
-- Verify the order and its canteen before collection.
-- Mark an order collected only once.
-- Prevent duplicate scans and unauthorized collection.
-- Provide an alternative identity-verification process when a student cannot access their phone.
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection string | Yes |
+| `JWT_SECRET` | JWT signing secret (min 32 chars) | Yes |
+| `QR_SECRET` | QR token HMAC secret (min 64 chars) | Yes |
+| `NODE_ENV` | `development` or `production` | Yes |
 
-### 6. Order Status Lifecycle
-1. **Pending:** The order has been submitted and awaits acceptance if required.
-2. **Confirmed:** The canteen has accepted the order; cancellation may be allowed.
-3. **Preparing:** Preparation has genuinely started; ordinary cancellation is locked.
-4. **Ready:** The food is ready for pickup.
-5. **Collected:** The student has collected the order and the transaction can be finalized.
-6. **Cancelled:** The order was cancelled under the applicable policy.
-7. **Rejected or Unable to Fulfil:** The canteen cannot complete the order; the student is notified and eligible credits or payment are restored according to policy.
+### Test Credentials (after seeding)
 
-Invalid status transitions must be rejected by the server. A client interface alone must not determine whether an order can be cancelled or collected.
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | admin@campusfoodpass.com | password123 |
+| Student | student@campusfoodpass.com | password123 |
+| Merchant | merchant@campusfoodpass.com | password123 |
 
-### 7. Smart Cancellation Policy
-- Students can cancel before preparation begins, subject to the published cutoff and package rules.
-- When preparation genuinely starts, the canteen records the status and the server timestamps the transition.
-- Once the order enters Preparing, ordinary cancellation is disabled.
-- A canteen cannot mark an order Preparing merely to block cancellation; unusual patterns can trigger review.
-- Preparation-status changes must be logged with the staff account and timestamp.
-- If the canteen cannot fulfil an order, the student receives the applicable refund or restored meal credits.
-- Admins can review disputed cases and correct errors with an audit trail.
-- Any preparation-capacity limits must reflect real operational capacity rather than arbitrary universal numbers.
+---
 
-### 8. Capacity and Rush-Hour Management
-- Configure capacity separately for each canteen and pickup slot.
-- Limit accepted orders by kitchen workload and item availability.
-- Reserve capacity atomically when an order is accepted to prevent overbooking.
-- Stop accepting orders when a slot reaches capacity.
-- Offer another slot or an alternative canteen when available.
-- Track late preparation, rejected orders, and no-shows to improve future scheduling.
+## Architecture Overview
 
-### 9. Merchant Registration
-- Canteens submit outlet information, menus, prices, and settlement details.
-- The platform verifies the outlet before activation.
-- Approved outlets can manage orders through a merchant dashboard.
-- Registration fees and subscriptions, if any, are disclosed before onboarding.
-- Merchant access can be suspended following documented review of serious misuse.
+### System Topology
 
-### 10. Payments and Settlement
-For the initial prototype, payment can be simulated or verified manually by an administrator. A production platform may integrate a suitable payment gateway after its commercial and compliance requirements are assessed.
+```
+Client PWA → Edge Proxy (src/proxy.ts) → API Routes → Service Layer → PostgreSQL
+                    ↓
+            JWT Verification
+            Rate Limiting
+            RBAC Guards
+```
 
-The platform should separately record:
-- Student payments and food-pass purchases.
-- Eligible meal-credit deductions.
-- Completed individual orders.
-- Refunds and restored credits.
-- Merchant gross sales.
-- Platform fees and other disclosed deductions.
-- Net merchant settlement and payout status.
+### Key Components
 
-A merchant settlement report should show the period, completed orders, adjustments, fees, and net amount payable. Prepaid funds must not be treated automatically as platform revenue. Unused credits, refunds, and payout rules must be defined in advance.
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| Edge | `src/proxy.ts` | Auth, rate limiting, RBAC |
+| API | `src/app/api/v1/` | REST endpoints with Zod validation |
+| Service | `src/lib/services/` | Business logic, atomic transactions |
+| State Machine | `src/lib/state-machine/` | Order lifecycle enforcement |
+| QR Engine | `src/lib/qr-engine/` | HMAC-SHA256 token security |
+| Recommendation | `src/lib/recommendation/` | Alternative canteen suggestions |
+| Settlement | `src/lib/settlement/` | T+1 merchant payouts |
+| Database | `prisma/schema.prisma` | Complete PostgreSQL schema |
 
-### 11. Revenue Model
-- A disclosed fee on eligible completed transactions.
-- Optional merchant subscription plans.
-- A reasonable onboarding fee where justified.
-- Optional premium merchant analytics.
-- Clearly labelled sponsored listings.
+---
 
-The model should be tested for fairness to students and canteen owners. Revenue assumptions must be validated before launch.
+## API Endpoints
 
-### 12. Analytics and Food-Waste Reduction
-- Daily and monthly order volumes.
-- Popular items and peak pickup periods.
-- Item-level stock and stockout frequency.
-- Preparation time and order fulfilment rates.
-- Cancellation and no-show rates.
-- Estimated demand based on historical orders.
-- Optional surplus tracking to support better preparation planning.
+### Authentication
+- `POST /api/v1/auth/register` - Register student/merchant
+- `POST /api/v1/auth/login` - Login, returns access + refresh tokens
+- `POST /api/v1/auth/refresh` - Rotate access token
 
-Demand forecasts are estimates, not guaranteed customer counts. Start with simple historical averages before introducing more advanced prediction models.
+### Orders (Student)
+- `POST /api/v1/orders` - Create order with atomic reservation
+- `GET /api/v1/orders` - List student's orders
+- `POST /api/v1/orders/alternatives` - Get alternative suggestions
 
-### 13. Suggested Main Screens
-**Student:** Sign in, dashboard, canteen list, menu, cart, pickup-slot selection, food pass, order tracking, QR collection code, history, and feedback.
+### Orders (Merchant)
+- `PATCH /api/v1/orders/:id/status` - Update order status
+- `GET /api/v1/orders` - List canteen's orders
 
-**Canteen:** Merchant dashboard, menu editor, stock manager, incoming orders, pickup schedule, preparation status, QR verification, reports, and settlements.
+### Collection
+- `POST /api/v1/collection/verify` - Verify QR, mark collected
 
-**Administrator:** Student verification, merchant approval, package management, transaction records, dispute review, fee configuration, audit logs, and analytics.
+### Menu & Slots (Merchant)
+- `GET/POST /api/v1/menu` - Manage menu items
+- `GET/POST /api/v1/pickup-slots` - Manage pickup windows
 
-### 14. Suggested Technical Architecture
-A web application or mobile-friendly progressive web app can be used for the initial release.
+### Canteens (Public)
+- `GET /api/v1/canteens` - Browse approved canteens
+- `GET /api/v1/canteens/:id` - Canteen detail with menu/slots
 
-- **Frontend:** TypeScript or another suitable component-based web framework.
-- **Backend:** Node.js with Express, or another API framework.
-- **Database:** PostgreSQL for structured records and transactions.
-- **Authentication:** Secure sessions or token-based authentication with role-based access control.
-- **QR verification:** Server-generated, unique, short-lived or single-use collection tokens.
-- **Notifications:** Email or push notifications, with in-app status updates as a baseline.
-- **Payments:** Simulated/manual approval for the prototype; a payment gateway for a later production release.
+### Food Passes
+- `GET/POST /api/v1/food-passes` - Manage prepaid packages
 
-These are suggested technologies, not mandatory requirements.
+### Settlements (Admin/Merchant)
+- `GET /api/v1/merchants/:id/settlement` - Settlement report
+- `GET /api/v1/merchants/:id/settlement?action=calculate` - Calculate (admin)
+- `GET /api/v1/merchants/:id/settlement?action=payout` - Process payout (admin)
 
-### 15. Core Data Entities
-- **User:** Student, merchant staff, or administrator identity and role.
-- **StudentProfile:** Student identifier and verification status.
-- **Canteen:** Outlet details, approval status, and operating hours.
-- **MenuItem:** Name, price, availability, and stock quantity.
-- **FoodPass:** Package, validity, credits, and status.
-- **Order:** Student, canteen, items, pickup slot, amount, and status.
-- **OrderItem:** Item, quantity, and price snapshot at order time.
-- **PickupSlot:** Time window, capacity, and reserved order count.
-- **Payment:** Payment reference, amount, and status.
-- **Settlement:** Merchant, period, completed sales, fees, adjustments, and payout status.
-- **AuditLog:** Actor, action, timestamp, and relevant record identifier.
-- **Feedback:** Rating, complaint category, and resolution status.
+### Health
+- `GET /api/v1/health` - Health check
 
-### 16. Security and Reliability
-- Enforce role-based permissions on the server.
-- Validate all prices, credits, stock, and order transitions on the server.
-- Use database transactions for stock reservations, credit deductions, and settlement calculations.
-- Make payment callbacks idempotent to avoid duplicate crediting.
-- Protect personal and payment-related information.
-- Rate-limit sensitive endpoints and monitor suspicious activity.
-- Store audit logs for preparation changes, refunds, and collection scans.
-- Back up important data and define recovery procedures.
-- Never store raw payment-card details unless the applicable secure payment architecture explicitly supports it.
+---
 
-### 17. Design Thinking Process
-**Empathize:** Interview students about queues, lunch breaks, food availability, and payment habits. Interview canteen operators about capacity, stock, and preparation workflows.
+## Core Business Rules Enforced
 
-**Define:** Frame the central problem as reducing waiting and uncertainty while preserving realistic kitchen capacity.
+### Order Lifecycle (Server-Enforced)
+```
+PENDING → CONFIRMED → PREPARING → READY → COLLECTED
+    ↓         ↓           ↓
+  CANCELLED REJECTED   REJECTED
+```
 
-**Ideate:** Compare pre-ordering, pickup slots, QR collection, food passes, stock controls, and cancellation policies.
+- **Students**: Can only cancel in `PENDING` or `CONFIRMED`
+- **Merchants**: Confirm → Prepare → Ready → Collect, or Reject
+- **Admins**: All transitions
+- **Terminal states**: COLLECTED, CANCELLED, REJECTED (no further transitions)
 
-**Prototype:** Build clickable student screens, a merchant order dashboard, and a simulated QR collection workflow.
+### Atomic Reservations
+Order creation uses Serializable transaction with `SELECT FOR UPDATE`:
+1. Lock pickup slot, check capacity
+2. Lock menu items, check stock
+3. Lock food pass, check credits
+4. Decrement all atomically
+5. Create order + audit logs
 
-**Test:** Observe users completing realistic tasks. Record completion time, errors, confusion, and feedback. Revise the design based on evidence.
+### QR Collection Security
+- HMAC-SHA256 signed tokens with nonce
+- 30-minute TTL, single-use enforcement
+- Replay prevention via database token matching
+- Timing-safe HMAC verification
 
-### 18. Suggested Development Roadmap
-**Phase 1 — Research:** Conduct interviews and map current student and canteen journeys.
+### Alternative Suggestions
+- Ranked by distance, price, time, stock, capacity
+- **Never auto-redirects** - requires explicit student consent
+- Audit trail for suggestions, acceptances, declinations
 
-**Phase 2 — UI prototype:** Build student, merchant, and administrator screens using sample data.
+### Settlement Math
+```
+Net Payable = Gross Sales - Platform Fees - Refund Adjustments
+```
+- Daily T+1 batch calculation
+- Platform fees = commissionRate × collected orders
+- Refund adjustments from paid cancelled/rejected orders
 
-**Phase 3 — Core ordering:** Implement menus, orders, pickup slots, stock controls, and status transitions.
+---
 
-**Phase 4 — Pass and QR:** Add meal-credit accounting and single-use collection verification.
+## Database Schema
 
-**Phase 5 — Merchant operations:** Add registration approval, settlement reports, and audit logs.
+Key tables with constraints:
+- `users` - Authentication + roles
+- `student_profiles` - Student info, verification
+- `merchant_staff` - Merchant employees, canteen linkage
+- `canteens` - Outlets, approval, commission, settlement info
+- `menu_items` - Items with stock, categories, dietary tags
+- `food_passes` - Prepaid packages with credits, validity
+- `pickup_slots` - Time windows with capacity tracking
+- `orders` - Full lifecycle, QR tokens, payment status
+- `order_items` - Price snapshots at order time
+- `payments` - Payment tracking, refunds
+- `settlements` - Daily merchant payouts
+- `audit_logs` - Complete immutable audit trail
 
-**Phase 6 — Pilot testing:** Test with a small group of students and one or two canteens before expanding.
+---
 
-**Phase 7 — Advanced features:** Add demand prediction, group orders, subscriptions, and payment integration if justified.
+## Development Guidelines
 
-### 19. Success Metrics
-- Average time from arrival to food collection.
-- Percentage of orders collected within the chosen pickup window.
-- Order cancellation and no-show rates.
-- Stockout and overbooking incidents.
-- Order fulfilment and preparation delay rates.
-- Student satisfaction and repeat usage.
-- Merchant satisfaction and settlement accuracy.
-- Estimated food waste compared with an appropriate baseline.
+### Code Standards
+- **TypeScript Strict Mode** - No `any`, `unknown`, or type assertions
+- **Zod Validation** - Every input validated at API boundary
+- **Server-Only Services** - `import "server-only"` in all services
+- **Semantic Tokens** - Tailwind CSS v4 design tokens only
+- **Source of Truth Headers** - Every file has keyword metadata
 
-### 20. Prototype Acceptance Criteria
-- A student can register and browse approved canteens.
-- A student can choose an available item and pickup slot.
-- The system rejects an order when stock or capacity is insufficient.
-- A confirmed order follows valid status transitions.
-- Cancellation is blocked after preparation begins, except for authorized exception handling.
-- A QR collection token cannot be used twice.
-- A canteen can view its own orders and reports but not another canteen's private records.
-- An administrator can approve merchants and review logged actions.
-- Settlement calculations can be reconciled against completed orders and documented adjustments.
+### Adding New Features
+1. Define Zod schema in `src/lib/validators/schemas.ts`
+2. Add service logic in `src/lib/services/` with `import "server-only"`
+3. Create API route in `src/app/api/v1/`
+4. Add state machine transitions if needed
+5. Write unit tests
+6. Update `ARCHITECTURE.md` if architecture changes
 
-### 21. Limitations and Future Scope
-The first prototype may use simulated payments, manually approved passes, and a limited number of canteens. Live payments, automatic settlements, forecasting, and multi-campus operations can be added after user testing and operational validation.
+### Testing
+```bash
+npm run test           # Run all tests
+npm run test:watch     # Watch mode
+npm run test:coverage  # Coverage report
+```
 
-### 22. Conclusion
-One Campus, One Food Pass aims to make campus food access more convenient through advance ordering, scheduled pickup, QR-based collection, and a shared student food pass. Stock controls, realistic preparation capacity, fair cancellation rules, and transparent merchant settlements help create a more reliable system for both students and canteen operators.
+### Database
+```bash
+npm run prisma:studio  # Visual database browser
+npm run db:push        # Push schema changes (dev only)
+npm run prisma:migrate # Create migration
+```
 
-**Project Title:** One Campus, One Food Pass: A Smart Pre-Order and Multi-Canteen Management System.
+---
+
+## Security Checklist
+
+- [x] JWT verification at edge proxy
+- [x] Rate limiting per user/IP
+- [x] RBAC on all endpoints
+- [x] Tenant isolation (`assertCanteenAccess`)
+- [x] Serializable transactions for orders
+- [x] HMAC-SHA256 QR tokens
+- [x] Timing-safe equality checks
+- [x] Input validation with Zod
+- [x] Audit logging for all mutations
+- [x] Password hashing with bcryptjs
+- [x] Secure HTTP headers
+- [x] HttpOnly refresh token cookies
+
+---
+
+## Project Structure
+
+```
+src/
+├── app/
+│   └── api/v1/           # REST API routes
+├── lib/
+│   ├── auth/             # JWT, server auth context
+│   ├── db/               # Prisma client
+│   ├── qr-engine/        # QR token generation/verification
+│   ├── recommendation/   # Alternative canteen engine
+│   ├── settlement/       # Merchant settlement calculation
+│   ├── state-machine/    # Order lifecycle state machine
+│   ├── services/         # Business logic (order-service)
+│   ├── types/            # Domain types
+│   └── validators/       # Zod schemas
+├── components/           # React components (future)
+├── proxy.ts              # Edge proxy middleware
+└── types/                # Global types
+
+prisma/
+├── schema.prisma         # Database schema
+└── seed.ts              # Development seed data
+```
+
+---
+
+## License
+
+MIT License - See LICENSE file for details.
