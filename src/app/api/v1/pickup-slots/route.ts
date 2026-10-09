@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createPickupSlotSchema } from "@/lib/validators/schemas";
+import { createPickupSlotSchema, uuidSchema } from "@/lib/validators/schemas";
 import { getAuthContext } from "@/lib/auth/server-auth";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
@@ -23,6 +23,13 @@ export async function GET(request: NextRequest) {
     if (!canteenId) {
       return NextResponse.json(
         { success: false, error: "Canteen ID required", errorCode: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
+    }
+
+    if (!uuidSchema.safeParse(canteenId).success) {
+      return NextResponse.json(
+        { success: false, error: "Invalid canteen ID format", errorCode: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
