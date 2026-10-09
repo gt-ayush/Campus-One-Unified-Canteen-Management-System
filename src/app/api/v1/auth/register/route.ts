@@ -6,10 +6,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { registerStudentSchema, registerMerchantSchema, apiResponseSchema } from "@/lib/validators/schemas";
+import { registerStudentSchema, registerMerchantSchema } from "@/lib/validators/schemas";
 import { prisma } from "@/lib/db/client";
 import { hash } from "bcryptjs";
-import { UserRole, UserStatus } from "@/lib/types/domain";
+import { UserRole, UserStatus } from "@prisma/client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,10 +79,10 @@ async function registerStudent(data: any) {
         create: {
           studentId,
           fullName,
-          phone,
+          phone: phone ?? null,
           campusId,
-          department,
-          yearOfStudy,
+          department: department ?? null,
+          yearOfStudy: yearOfStudy ?? null,
           isVerified: false,
         },
       },
