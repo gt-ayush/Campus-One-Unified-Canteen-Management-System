@@ -5,7 +5,7 @@
  * WHERE: prisma/seed.ts
  */
 
-import { PrismaClient, UserRole, UserStatus, OrderStatus, PaymentStatus, PaymentMethod } from "@prisma/client";
+import { PrismaClient, UserRole, UserStatus } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -123,7 +123,7 @@ async function main() {
   ];
 
   for (let i = 0; i < menuItems.length; i++) {
-    const item = menuItems[i];
+    const item = menuItems[i]!;
     await prisma.menuItem.upsert({
       where: { id: `seed-${item.name.toLowerCase().replace(/\s+/g, '-')}` },
       update: {},
@@ -236,7 +236,7 @@ async function main() {
   ];
 
   for (let i = 0; i < eastMenuItems.length; i++) {
-    const item = eastMenuItems[i];
+    const item = eastMenuItems[i]!;
     await prisma.menuItem.upsert({
       where: { id: `seed-east-${item.name.toLowerCase().replace(/\s+/g, '-')}` },
       update: {},
