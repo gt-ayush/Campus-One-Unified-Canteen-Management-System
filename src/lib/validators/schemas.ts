@@ -93,6 +93,7 @@ export const createMenuItemSchema = z.object({
   description: z.string().max(500).optional(),
   price: z.number().positive().max(10000),
   category: z.string().min(1).max(50),
+  isAvailable: z.boolean().default(true),
   stockQuantity: z.number().int().nonnegative().default(0),
   maxPerOrder: z.number().int().positive().max(100).default(10),
   imageUrl: z.string().url().max(500).optional().nullable(),
@@ -120,6 +121,7 @@ const pickupSlotBaseSchema = z.object({
   endTime: z.coerce.date(),
   capacityLimit: z.number().int().positive().max(500),
   preparationBuffer: z.number().int().nonnegative().max(60).default(15),
+  isActive: z.boolean().default(true),
 });
 
 export const updatePickupSlotSchema = pickupSlotBaseSchema.partial().omit({ canteenId: true }).refine((data) => {
