@@ -7,9 +7,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { transitionOrderStatus } from "@/lib/services/order-service";
-import { updateOrderStatusSchema, apiResponseSchema, errorResponseSchema } from "@/lib/validators/schemas";
+import { updateOrderStatusSchema } from "@/lib/validators/schemas";
 import { getAuthContext, createOrderContext } from "@/lib/auth/server-auth";
-import { UserRole, OrderStatus } from "@/lib/types/domain";
+import { OrderStatus, UserRole } from "@prisma/client";
 
 export async function PATCH(
   request: NextRequest,
@@ -36,7 +36,6 @@ export async function PATCH(
 
     const { status: targetStatus, reason } = validation.data;
 
-    const studentCancellableStatuses = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
     const isStudentCancellation = 
       authContext.role === UserRole.STUDENT && 
       targetStatus === OrderStatus.CANCELLED;
@@ -45,12 +44,6 @@ export async function PATCH(
       // Allow student cancellation - validation happens in service
     } else if (authContext.role === UserRole.MERCHANT_STAFF) {
       // Merchants can confirm, start preparing, mark ready, reject
-      const merchantAllowedTransitions = {
-        [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.REJECTED],
-        [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.REJECTED],
-        [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.REJECTED],
-        [OrderStatus.READY]: [OrderStatus.COLLECTED, OrderStatus.REJECTED],
-      };
     } else if (authContext.role !== UserRole.ADMIN) {
       return NextResponse.json(
         { success: false, error: "Insufficient permissions", errorCode: "FORBIDDEN" },
@@ -73,7 +66,7 @@ export async function PATCH(
       success: true,
       data: {
         message: `Order status updated to ${targetStatus}`,
-        qrToken: result.qrToken,
+        ...(result.qrToken && { qrToken: result.qrToken }),
       },
     });
   } catch (error) {
